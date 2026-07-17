@@ -1,0 +1,6 @@
+<nav class="steps" aria-label="Passaggi del preventivo">
+  <a class="{% if step == 1 %}current{% endif %}" href="{% if quote %}{% url 'quotes:general' quote.pk %}{% else %}#{% endif %}">1. Dati generali</a>
+  <a class="{% if step == 2 %}current{% endif %} {% if not quote %}disabled{% endif %}" href="{% if quote %}{% url 'quotes:items' quote.pk %}{% else %}#{% endif %}">2. Articoli</a>
+  <a class="{% if step == 3 %}current{% endif %} {% if not quote %}disabled{% endif %}" href="{% if quote %}{% url 'quotes:work' quote.pk %}{% else %}#{% endif %}">3. Lavorazioni</a>
+  <a class="{% if step == 4 %}current{% endif %} {% if not quote %}disabled{% endif %}" href="{% if quote %}{% url 'quotes:summary' quote.pk %}{% else %}#{% endif %}">4. Riepilogo</a>
+</nav>

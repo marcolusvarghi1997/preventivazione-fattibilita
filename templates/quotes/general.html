@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "quotes/_steps.html" %}
+<div class="page-heading"><div><h1>1. Dati generali</h1><p>{% if quote %}{{ quote.number }}{% else %}Il numero verra assegnato automaticamente al salvataggio.{% endif %}</p></div></div>
+<form method="post" class="card stacked-form">{% csrf_token %}
+  {% include "quotes/_form_fields.html" with form=form %}
+  <div class="form-actions"><a class="button secondary" href="{% url 'quotes:dashboard' %}">Indietro</a><button class="button primary large" type="submit">Salva e continua</button></div>
+</form>
+{% endblock %}

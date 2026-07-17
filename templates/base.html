@@ -1,0 +1,28 @@
+{% load static %}<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>{% block title %}Preventivi Carpenteria{% endblock %}</title>
+  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
+  <script src="{% static 'js/app.js' %}" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="{% url 'quotes:dashboard' %}">Preventivi Carpenteria</a>
+    {% if user.is_authenticated %}
+      <nav aria-label="Navigazione principale">
+        <a href="{% url 'quotes:dashboard' %}">Dashboard</a>
+        <a href="{% url 'quotes:search' %}">Cerca preventivo</a>
+        {% if user.is_staff %}<a href="/admin/">Amministrazione</a>{% endif %}
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="link-button" type="submit">Esci ({{ user.get_username }})</button></form>
+      </nav>
+    {% endif %}
+  </header>
+  <main id="page-main" class="container">
+    {% if messages %}<div class="messages" aria-live="polite">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,84 @@
+Devo sviluppare un app ad uso interno aziendale, di facilissimo utilizzo dato che l'utente che la usa sarà una persona con scarse competenze di utilizzo computer
+Ad ogni modo devo svilupparla al meglio perché sia estendibile in futuro, ho le competenze per farlo io
+Dammi il prompt pronto da copiare e incollare per un agente ai in codex che faccia il minimo codice essenziale per la realizzazione di questa app ad uso interno
+l'app sarà su un pc, eventualmente la possiamo caricare sul server e caricarla da computer diversi sulla stessa rete
+mi serve perciò che scegli il framework di riferimento e tutto quanto
+
+L'app è così fatta:
+Il programma si occuperà di gestire preventivazione  e fattibilità e sarà utilizzato dal commerciale dell'azienda
+
+In input il commerciale compilerà sulla base del disegno inviato dal cliente committente i campi per la realizzazione di uno o piu pezzi di carpenteria metallica
+
+Inizialmente l'utente inserisce il codice, cosi come materiale (che può essere piu di uno) e il peso di quel codice fatto di quel materiale
+Non obbligatori: descrizione, revisione, dimensioni, cliente committente
+
+Il processo si compone di più fasi che non sono necessariamente obbligatorie e che siano nel programma in una sezione tale per cui posso espandere in futuro, quindi idealmente un modulo per fase
+Le fasi sono:
+
+1: Taglio Lamiera
+2: Taglio Profili
+3: Piegatura
+4: Lavorazione Macchine Utensili
+5: Saldatura
+6: Sabbiatura
+7: Molatura
+8: Assemblaggio
+9: Lavorazioni Extra
+10: Acquisti Esterni
+11: Trattamento esterno
+
+Per ogni fase si dovrà scegliere la macchina di riferimento tra le macchine specifiche per quella fase
+
+Le macchine sono salvate con un Nome, un costo orario di utilizzo a persona, quanti operatori la usano, un tempo di lavorazione che e sono associate ad una fase
+Le macchine poi sono utilizzate per un tempo t che è inserito dall'utente o calcolato poi successivamente in base a certi parametri
+
+
+1: Taglio Lamiera
+Può essere fatto sulle macchine "Combinata ACIES" o "Laser 9kW"
+Il tempo di taglio va inserito dall'utente
+Deve restituire il costo di produzione e deve avere una zona per le note riguardante la fase 
+
+2: Taglio Profili
+La macchina qui non è selezionabile, è una sola ma è sempre quella per cui è una fase che si attiva con si/no e quindi c'è solo un costo della fase, non specifico perciò di una macchina
+Tempo di taglio inserito dall'utente
+Deve restituire il costo di produzione e deve avere una zona per le note riguardante la fase 
+
+3: Piegatura
+Le macchine sono: "HG1003ATC", "HG2204ATC", "HD1003", "SAFAN"
+Qui ogni macchina deve avere un campo operatore che può essere 1 se non specificato altrimenti, ma può essere anche di più
+Qui va inserito un tempo
+Questo modulo sarà poi evoluto successivamente per il calcolo del tempo, per il momento viene inserito dall'utente
+
+4: Lavorazione Macchine Utensili
+Qua ci sono le seguenti macchine, tutte hanno un solo operatore: "FAGIMA", "VF3", "MINIMILL", "MORI SEIKI", "TORNIO HAAS"
+Qui va inserito un tempo dall'utente e deve restituire il costo della fase
+Si possono usare più macchine in questa fase
+
+5: Saldatura
+Qui si sceglie tra Saldatura Manuale o Saldatura Robot
+Un solo operatore per macchina se non specificato, si inserisce il tempo, e anche qui si può fare sia saldatura manuale che robot insieme
+Inoltre c'è un tempo di attrezzaggio che va inserito sempre dall'utente 
+Restituisce il costo della fase
+
+6: Sabbiatura
+Si inserisce il tempo e da il costo, la macchina è una sola con il suo costo orario
+
+7: Molatura
+Si inserisce il tempo e da il costo, la macchina è una sola con il suo costo orario
+
+8: Assemblaggio
+Si inserisce il tempo e da il costo, la macchina è una sola con il suo costo orario
+
+9: Lavorazioni Extra
+Qui si inserisce direttamente il costo
+
+10: Acquisti Esterni
+In questa fase si risponde alla domanda "si riesce a fare?", se no -> allora acquisto esterno
+Si inserisce il costo
+
+11: Trattamento esterno
+Si seleziona il trattamento esterno tra i seguenti e si inserisce il costo: "Zincatura", "Cataforesi", "Verniciatura", "Altre"
+Per ognuna scelta si inserisce il costo
+
+
+In output dall'app devo avere una schermata che riassume preventivo e fattibilità, e devo poter generare un report PDF da poter presentare al cliente

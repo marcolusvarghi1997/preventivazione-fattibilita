@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-heading"><div><h1>Cerca preventivo</h1><p>Puoi usare uno o piu filtri.</p></div><a class="button primary" href="{% url 'quotes:create' %}">Nuovo preventivo</a></div>
+<form method="get" class="card search-form">{% include "quotes/_form_fields.html" with form=form %}<div class="form-actions"><button class="button primary" type="submit">Cerca</button><a class="button secondary" href="{% url 'quotes:search' %}">Azzera filtri</a></div></form>
+<section class="card"><h2>Risultati ({{ page.paginator.count }})</h2>
+{% if page.object_list %}<div class="table-wrap"><table><thead><tr><th>Numero</th><th>Cliente</th><th>Data</th><th>Stato</th><th>Fattibilita</th><th>Articoli</th><th></th></tr></thead><tbody>{% for quote in page %}<tr><td><strong>{{ quote.number }}</strong></td><td>{{ quote.client|default:"—" }}</td><td>{{ quote.date|date:"d/m/Y" }}</td><td>{{ quote.get_status_display }}</td><td>{{ quote.get_feasibility_display }}</td><td>{% for item in quote.items.all %}{{ item.code }}{% if not forloop.last %}, {% endif %}{% endfor %}</td><td><a class="button small" href="{% url 'quotes:summary' quote.pk %}">Apri</a></td></tr>{% endfor %}</tbody></table></div>
+<nav class="pagination" aria-label="Pagine risultati">{% if page.has_previous %}<a class="button small" href="?page={{ page.previous_page_number }}&{{ request.GET.urlencode }}">Pagina precedente</a>{% endif %}<span>Pagina {{ page.number }} di {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a class="button small" href="?page={{ page.next_page_number }}&{{ request.GET.urlencode }}">Pagina successiva</a>{% endif %}</nav>
+{% else %}<div class="empty">Nessun preventivo corrisponde ai filtri indicati.</div>{% endif %}</section>
+{% endblock %}

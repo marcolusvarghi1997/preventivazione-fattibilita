@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Accesso{% endblock %}
+{% block content %}
+<section class="login-card card narrow">
+  <h1>Accesso all'applicazione</h1>
+  <p>Inserisci il nome utente e la password forniti dall'amministratore.</p>
+  {% if form.errors %}<div class="alert error">Nome utente o password non corretti. Riprova.</div>{% endif %}
+  <form method="post" class="stacked-form">{% csrf_token %}
+    <label for="id_username">Nome utente</label>{{ form.username }}
+    <label for="id_password">Password</label>{{ form.password }}
+    <button class="button primary large" type="submit">Entra</button>
+  </form>
+</section>
+{% endblock %}

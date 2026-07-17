@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "quotes/_steps.html" %}
+<div class="page-heading"><div><h1>3. Lavorazioni</h1><p>{{ quote.number }} — attiva solo le fasi necessarie.</p></div></div>
+{% for item_row in item_rows %}
+<section class="item-work">
+  <div class="item-banner"><h2>Articolo {{ item_row.item.code }}</h2><span>Quantita {{ item_row.item.quantity }}</span></div>
+  {% for row in item_row.phases %}
+  <article class="phase-card {% if row.phase.active %}active{% else %}inactive{% endif %}" id="fase-{{ row.phase.pk }}">
+    <div class="phase-heading">
+      <div><span class="phase-number">{{ row.config.order }}</span><h3>{{ row.config.name }}</h3><span class="phase-state">{% if row.phase.active %}Attiva{% else %}Non attiva{% endif %}</span></div>
+      <strong class="phase-cost">Costo fase: EUR {{ row.phase.total_cost|floatformat:2 }}</strong>
+    </div>
+    <form method="post" action="{% url 'quotes:phase_update' quote.pk row.phase.pk %}" class="phase-control" hx-post="{% url 'quotes:phase_update' quote.pk row.phase.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
+      <div class="field yes-no"><label>Attivare questa fase?</label>{{ row.phase_form.active }}</div>
+      {% if row.config.code == "acquisti-esterni" %}<div class="field important-question"><label for="{{ row.phase_form.internal_answer.id_for_label }}">Si riesce a realizzare internamente?</label>{{ row.phase_form.internal_answer }}</div>{% endif %}
+      <div class="field grow"><label for="{{ row.phase_form.notes.id_for_label }}">Note della fase</label>{{ row.phase_form.notes }}</div>
+      <button class="button secondary" type="submit">Salva fase</button>
+    </form>
+    {% if row.phase.active %}
+    <div class="phase-details">
+      {% if row.config.mode == "time" %}
+        {% if row.phase.operations.all %}<div class="table-wrap"><table><thead><tr><th>Risorsa</th><th>Lavorazione</th><th>Attrezzaggio</th><th>Operatori</th><th>Riferimento</th><th>Costo</th><th></th></tr></thead><tbody>
+        {% for operation in row.phase.operations.all %}<tr><td>{{ operation.resource_name_snapshot }}</td><td>{{ operation.working_minutes }} min</td><td>{{ operation.setup_minutes }} min</td><td>{{ operation.operators_snapshot }}</td><td>{{ operation.get_time_basis_display }}</td><td>EUR {{ operation.total_cost|floatformat:2 }}{% if operation.hourly_cost_snapshot == 0 %}<br><span class="warning-text">Costo orario da configurare</span>{% endif %}</td><td><form method="post" action="{% url 'quotes:operation_delete' quote.pk operation.pk %}" hx-confirm="Rimuovere questa operazione?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form></td></tr>{% endfor %}
+        </tbody></table></div>{% endif %}
+        {% if row.config.multiple_rows or not row.phase.operations.exists %}
+        <details class="add-panel"><summary>Aggiungi {% if row.phase.operations.exists %}un'altra operazione{% else %}i tempi di lavorazione{% endif %}</summary>
+          <form method="post" action="{% url 'quotes:operation_add' quote.pk row.phase.pk %}" class="form-grid compact" hx-post="{% url 'quotes:operation_add' quote.pk row.phase.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}{% include "quotes/_form_fields.html" with form=row.operation_form %}<div class="form-actions full"><button class="button primary" type="submit">Aggiungi operazione</button></div></form>
+        </details>{% endif %}
+      {% elif row.config.mode == "direct" or row.config.mode == "purchase" %}
+        {% if row.phase.direct_costs.all %}<div class="table-wrap"><table><thead><tr><th>Descrizione</th><th>Fornitore</th><th>Importo</th><th>Note</th><th></th></tr></thead><tbody>{% for cost in row.phase.direct_costs.all %}<tr><td>{{ cost.description }}</td><td>{{ cost.supplier|default:"—" }}</td><td>EUR {{ cost.amount|floatformat:2 }}</td><td>{{ cost.notes|default:"—" }}</td><td><form method="post" action="{% url 'quotes:direct_cost_delete' quote.pk cost.pk %}" hx-confirm="Rimuovere questo costo?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+        {% if row.config.mode == "purchase" and row.phase.internal_answer == "no" and not row.phase.direct_costs.exists %}<div class="alert error">Costo esterno obbligatorio: hai indicato che non si riesce a realizzare internamente.</div>{% endif %}
+        {% if row.config.mode == "purchase" and row.phase.internal_answer == "to_check" %}<div class="alert warning">Verifica ancora necessaria: realizzabilita interna da controllare.</div>{% endif %}
+        <details class="add-panel"><summary>Aggiungi {% if row.config.mode == "purchase" %}un acquisto esterno{% else %}un costo diretto{% endif %}</summary><form method="post" action="{% url 'quotes:direct_cost_add' quote.pk row.phase.pk %}" class="form-grid compact" hx-post="{% url 'quotes:direct_cost_add' quote.pk row.phase.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}{% include "quotes/_form_fields.html" with form=row.direct_form %}<div class="form-actions full"><button class="button primary" type="submit">Aggiungi costo</button></div></form></details>
+      {% elif row.config.mode == "treatment" %}
+        {% if row.phase.treatments.all %}<div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Descrizione</th><th>Fornitore</th><th>Costo</th><th></th></tr></thead><tbody>{% for treatment in row.phase.treatments.all %}<tr><td>{{ treatment.get_treatment_type_display }}</td><td>{{ treatment.description|default:"—" }}</td><td>{{ treatment.supplier|default:"—" }}</td><td>EUR {{ treatment.cost|floatformat:2 }}</td><td><form method="post" action="{% url 'quotes:treatment_delete' quote.pk treatment.pk %}" hx-confirm="Rimuovere questo trattamento?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form></td></tr>{% endfor %}</tbody></table></div>{% endif %}
+        <details class="add-panel"><summary>Aggiungi trattamento esterno</summary><form method="post" action="{% url 'quotes:treatment_add' quote.pk row.phase.pk %}" class="form-grid compact" hx-post="{% url 'quotes:treatment_add' quote.pk row.phase.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}{% include "quotes/_form_fields.html" with form=row.treatment_form %}<div class="form-actions full"><button class="button primary" type="submit">Aggiungi trattamento</button></div></form></details>
+      {% endif %}
+    </div>
+    {% endif %}
+  </article>
+  {% endfor %}
+</section>
+{% empty %}<div class="alert error">Prima di configurare le lavorazioni devi inserire almeno un articolo.</div>{% endfor %}
+<div class="form-actions sticky-actions"><a class="button secondary" href="{% url 'quotes:items' quote.pk %}">Indietro</a><a class="button primary large" href="{% url 'quotes:summary' quote.pk %}">Vai al riepilogo</a></div>
+{% endblock %}

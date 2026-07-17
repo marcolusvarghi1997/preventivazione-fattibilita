@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "quotes/_steps.html" %}
+<div class="page-heading"><div><h1>4. Riepilogo e fattibilita</h1><p>{{ quote.number }} — {{ quote.client|default:"Cliente non indicato" }}</p></div><span class="status large-status">{{ quote.get_status_display }}</span></div>
+{% if validation.errors %}<section class="alert error"><h2>Errori da correggere</h2><p>Il preventivo non puo ancora essere completato.</p><ul>{% for error in validation.errors %}<li>{{ error }}</li>{% endfor %}</ul></section>{% else %}<section class="alert success"><strong>Controlli obbligatori completati.</strong> Il preventivo puo essere segnato come completato.</section>{% endif %}
+{% if validation.warnings %}<section class="alert warning"><h2>Verifiche e dati mancanti non bloccanti</h2><ul>{% for warning in validation.warnings %}<li>{{ warning }}</li>{% endfor %}</ul></section>{% endif %}
+{% for item in quote.items.all %}<section class="card summary-item"><div class="card-heading"><div><h2>{{ item.code }}</h2><p>{{ item.description|default:"Nessuna descrizione" }} — Quantita {{ item.quantity }} — {{ item.get_feasibility_display }}</p></div><strong>Totale articolo: EUR {{ item.total_cost|floatformat:2 }}</strong></div>
+  <h3>Materiali</h3><ul class="summary-list">{% for row in item.materials.all %}<li><span>{{ row.material.name }} — {{ row.weight_kg }} kg/pezzo</span><strong>{% if row.total_cost is None %}<span class="warning-text">Costo materiale non valorizzato</span>{% else %}EUR {{ row.total_cost|floatformat:2 }}{% endif %}</strong></li>{% empty %}<li class="error-text">Nessun materiale</li>{% endfor %}</ul>
+  <h3>Fasi attive</h3><ul class="summary-list">{% for phase in item.phases.all %}{% if phase.active %}<li><span>{{ phase.definition.name }}</span><strong>EUR {{ phase.total_cost|floatformat:2 }}</strong></li>{% endif %}{% empty %}<li>Nessuna fase attiva</li>{% endfor %}</ul>
+</section>{% endfor %}
+<section class="totals-card">
+  <div><span>Costo industriale complessivo</span><strong>EUR {{ quote.industrial_cost|floatformat:2 }}</strong></div>
+  <div><span>Prezzo commerciale offerto</span><strong>{% if quote.offered_price is not None %}EUR {{ quote.offered_price|floatformat:2 }}{% else %}Da definire{% endif %}</strong></div>
+  {% if quote.difference is not None %}<div><span>Differenza assoluta</span><strong>EUR {{ quote.difference|floatformat:2 }}</strong></div>{% endif %}
+  {% if quote.margin_percent is not None %}<div><span>Margine percentuale</span><strong>{{ quote.margin_percent|floatformat:2 }}%</strong></div>{% endif %}
+</section>
+<form method="post" class="card form-grid">{% csrf_token %}<h2 class="full">Fattibilita e prezzo</h2>{% include "quotes/_form_fields.html" with form=form %}<div class="form-actions full"><button class="button primary" type="submit">Salva riepilogo</button></div></form>
+<div class="action-grid">
+  <a class="button secondary large" href="{% url 'quotes:pdf' quote.pk %}">Genera PDF cliente</a>
+  <form method="post" action="{% url 'quotes:complete' quote.pk %}">{% csrf_token %}<button class="button success large" type="submit" {% if validation.errors %}disabled{% endif %}>Segna come completato</button></form>
+  <form method="post" action="{% url 'quotes:duplicate' quote.pk %}" data-confirm="Creare una copia completa del preventivo {{ quote.number }}?">{% csrf_token %}<button class="button secondary large" type="submit">Duplica preventivo</button></form>
+  <form method="post" action="{% url 'quotes:archive' quote.pk %}" data-confirm="Archiviare il preventivo? I dati resteranno disponibili nella ricerca.">{% csrf_token %}<button class="button danger large" type="submit">Archivia preventivo</button></form>
+</div>
+<div class="form-actions"><a class="button secondary" href="{% url 'quotes:work' quote.pk %}">Indietro</a></div>
+{% endblock %}

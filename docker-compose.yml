@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: ${DB_NAME:-preventivi}
+      POSTGRES_USER: ${DB_USER:-preventivi}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-change-me}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-preventivi}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  web:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:-change-me-before-use}
+      DJANGO_DEBUG: "False"
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DB_ENGINE: postgresql
+      DB_NAME: ${DB_NAME:-preventivi}
+      DB_USER: ${DB_USER:-preventivi}
+      DB_PASSWORD: ${DB_PASSWORD:-change-me}
+      DB_HOST: db
+      DB_PORT: "5432"
+      SERVER_PORT: ${SERVER_PORT:-8000}
+    ports:
+      - "${SERVER_PORT:-8000}:${SERVER_PORT:-8000}"
+volumes:
+  postgres_data:

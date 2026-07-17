@@ -1,0 +1,1200 @@
+Agisci come senior software engineer e realizza direttamente un MVP completo, funzionante e testato di un’applicazione web interna per la gestione della preventivazione e della fattibilità di componenti di carpenteria metallica.
+
+Non limitarti a proporre un’architettura o un piano: crea concretamente il progetto, tutti i file necessari, le migrazioni, i dati iniziali, i test, gli script di avvio e la documentazione.
+
+## 1. Obiettivo generale
+
+L’applicazione sarà utilizzata principalmente dal personale commerciale dell’azienda.
+
+L’utente finale ha scarse competenze informatiche. L’interfaccia deve quindi essere:
+
+* estremamente semplice;
+* interamente in italiano;
+* utilizzabile senza conoscere termini tecnici;
+* con pulsanti grandi e chiaramente etichettati;
+* con pochi campi per schermata;
+* senza icone prive di testo;
+* senza menu complessi;
+* con messaggi di errore espliciti;
+* ottimizzata principalmente per computer desktop;
+* utilizzabile anche da più computer collegati alla stessa rete locale.
+
+L’applicazione deve inizialmente funzionare su un singolo PC Windows, ma deve poter essere successivamente eseguita su un server aziendale e aperta dai computer della rete tramite browser.
+
+## 2. Vincoli architetturali
+
+Utilizza questa architettura:
+
+* Python 3.13;
+* Django 5.2 LTS;
+* template Django server-side;
+* HTMX solo dove realmente utile;
+* JavaScript vanilla ridotto al minimo;
+* SQLite come database predefinito;
+* predisposizione tramite variabili d’ambiente per PostgreSQL;
+* ReportLab Platypus per la generazione dei PDF;
+* Waitress come application server WSGI, compatibile con Windows;
+* WhiteNoise per servire i file statici;
+* autenticazione e permessi nativi Django;
+* CSS semplice e locale;
+* nessuna dipendenza da CDN o da una connessione Internet durante l’utilizzo;
+* interfaccia responsive, ma progettata soprattutto per desktop;
+* lingua `it-it`;
+* timezone `Europe/Rome`;
+* valori monetari gestiti esclusivamente con `Decimal`, mai con `float`.
+
+Non utilizzare:
+
+* React;
+* Vue;
+* Angular;
+* Django REST Framework;
+* API separate non necessarie;
+* microservizi;
+* Celery;
+* Redis;
+* WebSocket;
+* architetture event-driven;
+* repository pattern artificiosi;
+* astrazioni premature;
+* dipendenze non indispensabili.
+
+Il codice deve essere minimo, leggibile, tipizzato dove utile e facilmente estendibile.
+
+## 3. Struttura del progetto
+
+Organizza il progetto indicativamente così:
+
+```text
+preventivi_carpenteria/
+├── AGENTS.md
+├── README.md
+├── requirements.txt
+├── .env.example
+├── manage.py
+├── config/
+│   ├── settings.py
+│   ├── urls.py
+│   └── wsgi.py
+├── apps/
+│   ├── catalog/
+│   │   ├── admin.py
+│   │   ├── models.py
+│   │   └── management/commands/seed_initial_data.py
+│   ├── quotes/
+│   │   ├── admin.py
+│   │   ├── models.py
+│   │   ├── forms.py
+│   │   ├── views.py
+│   │   ├── urls.py
+│   │   ├── services/
+│   │   │   ├── calculations.py
+│   │   │   └── validation.py
+│   │   └── phases/
+│   │       ├── base.py
+│   │       ├── registry.py
+│   │       ├── taglio_lamiera.py
+│   │       ├── taglio_profili.py
+│   │       ├── piegatura.py
+│   │       ├── macchine_utensili.py
+│   │       ├── saldatura.py
+│   │       ├── sabbiatura.py
+│   │       ├── molatura.py
+│   │       ├── assemblaggio.py
+│   │       ├── lavorazioni_extra.py
+│   │       ├── acquisti_esterni.py
+│   │       └── trattamento_esterno.py
+│   └── reports/
+│       ├── pdf.py
+│       └── views.py
+├── templates/
+├── static/
+│   ├── css/
+│   ├── js/
+│   └── vendor/
+├── tests/
+├── scripts/
+│   ├── setup_windows.bat
+│   ├── start_local.bat
+│   ├── start_lan.bat
+│   └── backup_database.bat
+└── docker-compose.yml
+```
+
+Puoi modificare leggermente questa struttura quando tecnicamente motivato, ma mantieni:
+
+* un solo progetto Django;
+* pochi modelli generici;
+* un modulo Python distinto per ciascuna fase;
+* logica di calcolo separata dalle view;
+* generazione PDF separata dalle view;
+* niente duplicazione della stessa logica nelle undici fasi.
+
+## 4. Ruoli utente
+
+Utilizza il sistema utenti nativo di Django.
+
+Prevedi due gruppi:
+
+### Commerciale
+
+Può:
+
+* creare preventivi;
+* modificare preventivi;
+* duplicare preventivi;
+* visualizzare preventivi;
+* cercare preventivi;
+* generare PDF;
+* archiviare preventivi.
+
+Non deve accedere al pannello amministrativo tecnico.
+
+### Amministratore
+
+Può inoltre:
+
+* gestire utenti;
+* gestire clienti;
+* gestire materiali;
+* gestire macchine e risorse produttive;
+* modificare costi orari;
+* attivare o disattivare risorse;
+* accedere al Django Admin.
+
+Crea un comando di inizializzazione che generi i gruppi e assegni i permessi corretti.
+
+## 5. Concetto di preventivo
+
+Un preventivo può contenere uno o più codici/articoli.
+
+Ogni preventivo deve avere almeno:
+
+* numero preventivo generato automaticamente;
+* data;
+* stato;
+* cliente facoltativo;
+* referente cliente facoltativo;
+* note interne;
+* note visibili al cliente;
+* stato generale di fattibilità;
+* prezzo commerciale offerto facoltativo;
+* autore;
+* data di creazione;
+* data di ultima modifica.
+
+Stati del preventivo:
+
+* Bozza;
+* In lavorazione;
+* Completato;
+* Inviato;
+* Archiviato.
+
+Stati di fattibilità:
+
+* Da verificare;
+* Fattibile internamente;
+* Fattibile con lavorazioni o acquisti esterni;
+* Non fattibile.
+
+Il numero preventivo deve avere un formato semplice, per esempio:
+
+```text
+PREV-2026-0001
+```
+
+Gestisci correttamente la concorrenza nella generazione del progressivo.
+
+## 6. Articoli o codici del preventivo
+
+Ogni preventivo può contenere uno o più articoli.
+
+Ogni articolo deve avere:
+
+### Campi obbligatori
+
+* codice;
+* quantità, valore predefinito 1;
+* almeno un materiale;
+* peso associato a ogni materiale.
+
+### Campi facoltativi
+
+* descrizione;
+* revisione;
+* dimensioni;
+* note tecniche;
+* fattibilità specifica dell’articolo.
+
+Uno stesso codice può essere composto da più materiali.
+
+Per ciascun materiale associato all’articolo memorizza:
+
+* materiale;
+* peso in kg;
+* costo al kg acquisito come snapshot;
+* eventuale costo materiale calcolato.
+
+Il catalogo materiali deve prevedere:
+
+* nome;
+* descrizione facoltativa;
+* costo corrente al kg facoltativo;
+* attivo/non attivo.
+
+Se il materiale non ha un costo al kg, il preventivo deve comunque essere salvabile, ma nel riepilogo deve apparire chiaramente:
+
+```text
+Costo materiale non valorizzato
+```
+
+Non bloccare il lavoro del commerciale per dati economici mancanti che possono essere completati successivamente.
+
+## 7. Risorse produttive e macchine
+
+Non modellare separatamente macchine, attività manuali e postazioni fisse.
+
+Utilizza un modello generico chiamato, per esempio, `ProductionResource`, che rappresenti una risorsa utilizzabile durante una fase.
+
+Campi:
+
+* nome;
+* codice interno facoltativo;
+* fase associata;
+* costo orario per persona;
+* numero operatori predefinito;
+* tipo risorsa:
+
+  * macchina;
+  * attività manuale;
+  * lavorazione fissa;
+* selezionabile dall’utente sì/no;
+* attiva sì/no;
+* note.
+
+Il tempo di lavorazione non appartiene alla macchina. Il tempo appartiene all’utilizzo della macchina all’interno di uno specifico articolo e preventivo.
+
+I costi orari possono cambiare nel tempo. Quando una risorsa viene utilizzata in un preventivo, salva nell’operazione:
+
+* costo orario snapshot;
+* numero operatori snapshot;
+* nome risorsa snapshot.
+
+Una modifica futura del costo della macchina non deve modificare i preventivi già creati.
+
+## 8. Formula dei costi temporali
+
+L’utente inserisce i tempi sempre in minuti.
+
+Ogni utilizzo temporale deve contenere:
+
+* risorsa;
+* minuti di lavorazione;
+* minuti di attrezzaggio;
+* numero operatori;
+* riferimento del tempo:
+
+  * per singolo pezzo;
+  * per intero lotto;
+* note.
+
+Formula base:
+
+```text
+costo lavorazione =
+(minuti lavorazione / 60)
+× costo orario per persona
+× numero operatori
+```
+
+Se il tempo è riferito al singolo pezzo:
+
+```text
+costo lavorazione totale =
+costo lavorazione
+× quantità
+```
+
+Se il tempo è riferito all’intero lotto, non moltiplicare per quantità.
+
+Il tempo di attrezzaggio è sempre riferito all’intero lotto e non deve essere moltiplicato per quantità:
+
+```text
+costo attrezzaggio =
+(minuti attrezzaggio / 60)
+× costo orario per persona
+× numero operatori
+```
+
+Costo totale dell’operazione:
+
+```text
+costo operazione =
+costo lavorazione totale
++ costo attrezzaggio
+```
+
+Arrotonda i risultati monetari a due decimali solo in fase di presentazione. Mantieni precisione adeguata nei calcoli intermedi.
+
+## 9. Modello generico delle fasi
+
+Ogni articolo deve avere undici sezioni di fase.
+
+Ogni fase deve avere almeno:
+
+* codice fase;
+* attiva sì/no;
+* note;
+* ordine di visualizzazione;
+* costo totale calcolato.
+
+Usa un modello generico, per esempio `ItemPhase`, e modelli collegati per:
+
+* operazioni temporali;
+* costi diretti;
+* trattamenti esterni.
+
+Non creare undici tabelle quasi identiche.
+
+Ogni fase deve avere però un proprio modulo Python nel package `phases`, responsabile di:
+
+* configurazione;
+* risorse ammesse;
+* modalità di selezione;
+* validazione;
+* eventuali regole specifiche;
+* costruzione del riepilogo.
+
+Definisci un’interfaccia base semplice e un registry delle fasi.
+
+Non introdurre plugin dinamici complessi. È sufficiente un registry Python esplicito.
+
+## 10. Configurazione delle undici fasi
+
+### 1. Taglio Lamiera
+
+La fase può essere attivata o disattivata.
+
+Macchine selezionabili:
+
+* Combinata ACIES;
+* Laser 9kW.
+
+Regole:
+
+* selezione di una macchina;
+* tempo di taglio inserito dall’utente;
+* operatori proposti dalla risorsa ma modificabili;
+* minuti di attrezzaggio facoltativi;
+* note;
+* restituzione del costo della fase.
+
+### 2. Taglio Profili
+
+La fase può essere attivata o disattivata.
+
+La risorsa è unica e non deve essere scelta dall’utente.
+
+Crea una risorsa fissa:
+
+* Taglio Profili.
+
+Regole:
+
+* nessun menu macchina;
+* tempo inserito dall’utente;
+* operatori modificabili;
+* note;
+* costo calcolato usando il costo orario della risorsa fissa.
+
+### 3. Piegatura
+
+Macchine selezionabili:
+
+* HG1003ATC;
+* HG2204ATC;
+* HD1003;
+* SAFAN.
+
+Regole:
+
+* selezione di una macchina;
+* tempo inserito dall’utente;
+* numero operatori predefinito 1, salvo valore configurato sulla macchina;
+* numero operatori modificabile;
+* minuti di attrezzaggio facoltativi;
+* note;
+* predisporre il modulo affinché in futuro il tempo possa essere calcolato automaticamente;
+* nell’MVP il tempo viene sempre inserito manualmente.
+
+Non implementare ora algoritmi di calcolo automatico del tempo.
+
+### 4. Lavorazione Macchine Utensili
+
+Macchine disponibili:
+
+* FAGIMA;
+* VF3;
+* MINIMILL;
+* MORI SEIKI;
+* TORNIO HAAS.
+
+Regole:
+
+* ogni macchina ha un solo operatore come valore predefinito;
+* si possono aggiungere più operazioni;
+* possono essere utilizzate più macchine nello stesso articolo;
+* la stessa macchina può essere usata più volte;
+* ogni riga ha macchina, tempo, eventuale attrezzaggio e note;
+* costo della fase uguale alla somma delle operazioni.
+
+### 5. Saldatura
+
+Risorse disponibili:
+
+* Saldatura Manuale;
+* Saldatura Robot.
+
+Regole:
+
+* entrambe possono essere utilizzate nello stesso articolo;
+* si possono aggiungere più righe;
+* un operatore predefinito, ma modificabile;
+* tempo di saldatura;
+* tempo di attrezzaggio;
+* note;
+* costo della fase uguale alla somma di lavorazione e attrezzaggio.
+
+### 6. Sabbiatura
+
+Risorsa unica e non selezionabile:
+
+* Sabbiatura.
+
+Regole:
+
+* tempo;
+* eventuale attrezzaggio;
+* operatori;
+* note;
+* costo calcolato.
+
+### 7. Molatura
+
+Risorsa unica e non selezionabile:
+
+* Molatura.
+
+Regole:
+
+* tempo;
+* eventuale attrezzaggio;
+* operatori;
+* note;
+* costo calcolato.
+
+### 8. Assemblaggio
+
+Risorsa unica e non selezionabile:
+
+* Assemblaggio.
+
+Regole:
+
+* tempo;
+* eventuale attrezzaggio;
+* operatori;
+* note;
+* costo calcolato.
+
+### 9. Lavorazioni Extra
+
+Non richiede una macchina.
+
+Permetti più righe di costo diretto con:
+
+* descrizione;
+* importo;
+* note.
+
+Il costo della fase è la somma degli importi.
+
+### 10. Acquisti Esterni
+
+Mostra chiaramente la domanda:
+
+```text
+Si riesce a realizzare internamente?
+```
+
+Possibili risposte:
+
+* Sì;
+* No;
+* Da verificare.
+
+Regole:
+
+* se la risposta è Sì, il costo esterno è facoltativo e normalmente zero;
+* se la risposta è No, il costo dell’acquisto esterno diventa obbligatorio;
+* se la risposta è Da verificare, consenti il salvataggio e segnala la verifica nel riepilogo;
+* campi:
+
+  * descrizione acquisto;
+  * fornitore facoltativo;
+  * costo;
+  * note.
+
+Se la risposta è No e viene valorizzato un acquisto esterno, la fattibilità suggerita dell’articolo deve diventare:
+
+```text
+Fattibile con lavorazioni o acquisti esterni
+```
+
+Non sovrascrivere comunque una scelta manuale esplicita effettuata dall’utente.
+
+### 11. Trattamento Esterno
+
+Permetti una o più righe.
+
+Tipi disponibili:
+
+* Zincatura;
+* Cataforesi;
+* Verniciatura;
+* Altro.
+
+Per ogni riga:
+
+* tipo trattamento;
+* descrizione obbligatoria solo per “Altro”;
+* fornitore facoltativo;
+* costo;
+* note.
+
+Il costo della fase è la somma dei trattamenti inseriti.
+
+## 11. Calcolo complessivo
+
+Per ogni articolo calcola separatamente:
+
+* costo materiali;
+* costo Taglio Lamiera;
+* costo Taglio Profili;
+* costo Piegatura;
+* costo Macchine Utensili;
+* costo Saldatura;
+* costo Sabbiatura;
+* costo Molatura;
+* costo Assemblaggio;
+* costo Lavorazioni Extra;
+* costo Acquisti Esterni;
+* costo Trattamenti Esterni;
+* costo totale articolo.
+
+Per il preventivo calcola:
+
+```text
+costo industriale totale =
+somma dei costi totali degli articoli
+```
+
+Aggiungi al preventivo un campo facoltativo:
+
+```text
+prezzo commerciale offerto
+```
+
+Non implementare automaticamente margini, ricarichi, IVA o sconti perché non sono stati ancora definiti.
+
+Nel riepilogo interno mostra distintamente:
+
+* costo industriale;
+* prezzo commerciale offerto;
+* differenza assoluta;
+* margine percentuale, solo se il prezzo commerciale è presente e maggiore di zero.
+
+Formula del margine percentuale:
+
+```text
+(prezzo commerciale - costo industriale)
+÷ prezzo commerciale
+× 100
+```
+
+Non usare il termine “ricarico” per questa percentuale.
+
+Nel PDF cliente non mostrare:
+
+* costi orari;
+* costo per persona;
+* numero operatori;
+* costi industriali interni;
+* margini;
+* dettagli economici interni delle singole fasi.
+
+## 12. Interfaccia utente
+
+Crea una dashboard estremamente semplice con:
+
+* pulsante grande “Nuovo preventivo”;
+* pulsante “Cerca preventivo”;
+* elenco degli ultimi preventivi;
+* numero;
+* cliente;
+* data;
+* stato;
+* fattibilità;
+* prezzo offerto;
+* pulsante “Apri”.
+
+Implementa la compilazione come procedura guidata:
+
+### Passaggio 1 – Dati generali
+
+* cliente;
+* referente;
+* note interne;
+* note cliente.
+
+### Passaggio 2 – Articoli
+
+* aggiunta di uno o più articoli;
+* codice;
+* quantità;
+* descrizione;
+* revisione;
+* dimensioni;
+* materiali e pesi.
+
+### Passaggio 3 – Lavorazioni
+
+Per ogni articolo mostra le undici fasi in ordine.
+
+Ogni fase deve avere:
+
+* un grande selettore “Sì / No” oppure “Attiva fase”;
+* i campi della fase nascosti quando non attiva;
+* costo della fase aggiornato dopo il salvataggio;
+* note;
+* stato visivo completato/non completato.
+
+Usa HTMX per:
+
+* aggiungere o rimuovere materiali;
+* aggiungere o rimuovere operazioni;
+* aggiungere o rimuovere trattamenti;
+* ricalcolare i riepiloghi;
+* aggiornare una singola sezione senza ricaricare tutta la pagina.
+
+Non creare autosalvataggi complessi.
+
+Usa pulsanti espliciti:
+
+* Salva;
+* Salva e continua;
+* Indietro;
+* Vai al riepilogo.
+
+### Passaggio 4 – Riepilogo e fattibilità
+
+Mostra:
+
+* dati generali;
+* articoli;
+* materiali;
+* quantità;
+* fasi attive;
+* costo di ogni fase;
+* costo di ogni articolo;
+* costo industriale complessivo;
+* eventuali costi mancanti;
+* controlli ancora da completare;
+* fattibilità;
+* prezzo commerciale offerto;
+* pulsante “Genera PDF cliente”;
+* pulsante “Duplica preventivo”;
+* pulsante “Segna come completato”.
+
+Usa colori anche accompagnati da testo:
+
+* verde: completato/fattibile;
+* giallo: da verificare;
+* rosso: non fattibile o dato obbligatorio mancante.
+
+Non affidare mai un’informazione esclusivamente al colore.
+
+## 13. Validazione
+
+Implementa almeno queste regole:
+
+* il preventivo deve avere almeno un articolo;
+* ogni articolo deve avere un codice;
+* quantità maggiore di zero;
+* ogni articolo deve avere almeno un materiale;
+* peso materiale maggiore di zero;
+* importi mai negativi;
+* tempi mai negativi;
+* numero operatori almeno 1;
+* macchina obbligatoria nelle fasi che la richiedono;
+* una fase attiva con costo temporale deve avere almeno un tempo o un costo coerente;
+* acquisto esterno obbligatorio quando non realizzabile internamente;
+* descrizione obbligatoria per trattamento “Altro”;
+* preventivo completabile solo quando non esistono errori bloccanti;
+* i dati ancora “Da verificare” non bloccanti devono apparire chiaramente nel riepilogo.
+
+La validazione deve essere eseguita lato server. JavaScript può migliorare l’esperienza utente, ma non deve essere l’unica validazione.
+
+## 14. PDF cliente
+
+Genera un PDF A4 professionale tramite ReportLab Platypus.
+
+Il PDF deve contenere:
+
+* eventuale spazio per logo aziendale;
+* intestazione aziendale configurabile da settings o variabili d’ambiente;
+* titolo “Preventivo”;
+* numero preventivo;
+* data;
+* cliente;
+* referente;
+* tabella degli articoli;
+* codice;
+* revisione;
+* descrizione;
+* dimensioni;
+* quantità;
+* materiali;
+* peso;
+* eventuali trattamenti esterni;
+* stato sintetico di fattibilità;
+* note destinate al cliente;
+* prezzo commerciale offerto;
+* totale preventivo;
+* area finale per condizioni o firma.
+
+Se il prezzo commerciale offerto non è stato compilato, non inserire nel PDF il costo industriale. Mostra invece:
+
+```text
+Importo da definire
+```
+
+Il PDF deve:
+
+* essere generato in memoria;
+* essere restituito come download HTTP;
+* avere un nome simile a:
+  `Preventivo_PREV-2026-0001.pdf`;
+* gestire correttamente testi lunghi e tabelle su più pagine;
+* avere numerazione pagina;
+* non esporre dati interni relativi a operatori, costi orari o margini.
+
+## 15. Dati iniziali
+
+Crea il comando:
+
+```bash
+python manage.py seed_initial_data
+```
+
+Il comando deve essere idempotente e creare o aggiornare:
+
+### Fasi
+
+1. Taglio Lamiera
+2. Taglio Profili
+3. Piegatura
+4. Lavorazione Macchine Utensili
+5. Saldatura
+6. Sabbiatura
+7. Molatura
+8. Assemblaggio
+9. Lavorazioni Extra
+10. Acquisti Esterni
+11. Trattamento Esterno
+
+### Risorse
+
+Taglio Lamiera:
+
+* Combinata ACIES;
+* Laser 9kW.
+
+Taglio Profili:
+
+* Taglio Profili, risorsa fissa non selezionabile.
+
+Piegatura:
+
+* HG1003ATC;
+* HG2204ATC;
+* HD1003;
+* SAFAN.
+
+Macchine Utensili:
+
+* FAGIMA;
+* VF3;
+* MINIMILL;
+* MORI SEIKI;
+* TORNIO HAAS.
+
+Saldatura:
+
+* Saldatura Manuale;
+* Saldatura Robot.
+
+Risorse fisse:
+
+* Sabbiatura;
+* Molatura;
+* Assemblaggio.
+
+Non inventare i costi orari.
+
+Imposta temporaneamente:
+
+* costo orario a `0.00`;
+* numero operatori predefinito a `1`;
+* risorsa attiva.
+
+Nel pannello amministrativo evidenzia chiaramente le risorse con costo orario non configurato.
+
+Un costo orario a zero deve generare un avviso nel riepilogo, non un errore bloccante.
+
+## 16. Pannello amministrativo
+
+Configura Django Admin per gestire:
+
+* clienti;
+* materiali;
+* risorse produttive;
+* costi orari;
+* utenti;
+* gruppi;
+* preventivi;
+* articoli;
+* fasi.
+
+Aggiungi:
+
+* ricerca;
+* filtri;
+* ordinamento;
+* campi readonly per snapshot e totali;
+* azioni ragionevoli;
+* evidenza delle risorse senza costo configurato.
+
+Il commerciale non deve usare il Django Admin per compilare i preventivi.
+
+## 17. Duplicazione preventivo
+
+Implementa la funzione “Duplica preventivo”.
+
+La duplicazione deve copiare:
+
+* dati generali utili;
+* articoli;
+* materiali;
+* fasi;
+* operazioni;
+* trattamenti;
+* costi diretti;
+* note.
+
+Deve invece:
+
+* generare un nuovo numero;
+* impostare la data corrente;
+* impostare lo stato a Bozza;
+* aggiornare autore e timestamp;
+* mantenere gli snapshot economici copiati, senza rileggerli automaticamente dal catalogo.
+
+Richiedi una conferma esplicita prima della duplicazione.
+
+## 18. Ricerca e archivio
+
+Implementa una pagina di ricerca con:
+
+* ricerca per numero preventivo;
+* codice articolo;
+* cliente;
+* descrizione;
+* stato;
+* fattibilità;
+* intervallo di date.
+
+Usa paginazione.
+
+L’archiviazione non deve cancellare fisicamente il preventivo.
+
+Non implementare cancellazioni definitive nell’interfaccia commerciale.
+
+## 19. Sicurezza e configurazione
+
+Predisponi variabili d’ambiente per:
+
+* `DJANGO_SECRET_KEY`;
+* `DJANGO_DEBUG`;
+* `DJANGO_ALLOWED_HOSTS`;
+* dati aziendali;
+* percorso logo;
+* database PostgreSQL futuro;
+* porta del server.
+
+Usa:
+
+* CSRF Django;
+* autenticazione obbligatoria;
+* permessi lato server;
+* escaping standard dei template;
+* validazione dei file e degli input;
+* `DEBUG=False` negli script LAN;
+* cookie con impostazioni adeguate quando l’app verrà esposta tramite HTTPS.
+
+Non esporre l’app direttamente su Internet.
+
+La configurazione prevista è rete locale aziendale o VPN.
+
+## 20. Avvio locale e LAN
+
+Crea gli script Windows.
+
+### `setup_windows.bat`
+
+Deve:
+
+* creare `.venv` se assente;
+* attivare il virtual environment;
+* installare le dipendenze;
+* eseguire le migrazioni;
+* eseguire `seed_initial_data`;
+* raccogliere i file statici;
+* spiegare come creare il superuser.
+
+### `start_local.bat`
+
+Deve avviare l’app solo sul PC locale:
+
+```text
+127.0.0.1:8000
+```
+
+### `start_lan.bat`
+
+Deve avviare Waitress su:
+
+```text
+0.0.0.0:8000
+```
+
+Mostra nel terminale un messaggio che spieghi che dagli altri PC sarà necessario aprire:
+
+```text
+http://IP-DEL-PC-SERVER:8000
+```
+
+Non cercare di modificare automaticamente il firewall Windows.
+
+Documenta nel README il comando PowerShell per individuare l’indirizzo IPv4 e la necessità di autorizzare la porta 8000 nel firewall aziendale.
+
+### Backup
+
+Crea uno script per fare una copia timestampata del database SQLite nella directory:
+
+```text
+backups/
+```
+
+Lo script deve rifiutarsi di sovrascrivere backup già presenti.
+
+## 21. PostgreSQL futuro
+
+L’app deve funzionare immediatamente con SQLite.
+
+Predisponi però `settings.py` affinché possa usare PostgreSQL attraverso variabili d’ambiente, senza modificare i modelli.
+
+Aggiungi un `docker-compose.yml` semplice e opzionale con:
+
+* applicazione Django;
+* PostgreSQL;
+* volume persistente;
+* variabili d’ambiente;
+* porta configurabile.
+
+Docker non deve essere necessario per l’uso locale iniziale.
+
+## 22. Test obbligatori
+
+Scrivi test automatici almeno per:
+
+* calcolo costo per singolo pezzo;
+* calcolo costo per lotto;
+* attrezzaggio non moltiplicato per quantità;
+* più operatori;
+* più operazioni nella stessa fase;
+* più materiali;
+* costo materiale mancante;
+* snapshot costo orario;
+* modifica del costo macchina che non altera preventivi precedenti;
+* totale articolo;
+* totale preventivo;
+* fase disattivata con costo zero;
+* validazione acquisto esterno;
+* validazione trattamento “Altro”;
+* duplicazione preventivo;
+* permessi commerciale;
+* permessi amministratore;
+* generazione PDF;
+* assenza nel PDF di costo orario, operatori e margine;
+* numero preventivo progressivo;
+* comando seed idempotente.
+
+Usa il framework di test nativo Django.
+
+Non introdurre pytest salvo reale necessità.
+
+## 23. Qualità del codice
+
+Usa:
+
+* nomi del codice in inglese;
+* etichette dell’interfaccia in italiano;
+* type hints nei servizi di calcolo;
+* docstring solo dove utili;
+* metodi piccoli;
+* query efficienti con `select_related` e `prefetch_related`;
+* transazioni atomiche nelle operazioni di duplicazione e generazione progressivi;
+* `TextChoices` per gli enum;
+* `UniqueConstraint` e `CheckConstraint` dove appropriato;
+* indici sui campi di ricerca;
+* proprietà o servizi centralizzati per i totali.
+
+Evita:
+
+* signal Django per logica aziendale importante;
+* logica di calcolo nei template;
+* logica complessa nei model `save()`;
+* GenericForeignKey;
+* JSONField per dati economici fondamentali;
+* duplicazione di formule;
+* valori monetari memorizzati come stringhe;
+* hardcoding dei costi;
+* codice morto;
+* TODO nelle funzionalità fondamentali.
+
+## 24. File AGENTS.md
+
+Crea nella root un file `AGENTS.md` breve ma vincolante, che dica ai futuri agenti Codex di:
+
+* mantenere Django server-rendered;
+* non introdurre una SPA senza richiesta esplicita;
+* non duplicare la logica dei calcoli;
+* usare Decimal;
+* mantenere snapshot dei costi;
+* aggiungere test per ogni nuova regola economica;
+* mantenere l’interfaccia italiana e semplice;
+* non mostrare dati industriali interni nei PDF cliente;
+* eseguire test, migrations check e Django system check prima di concludere;
+* aggiornare il README quando cambiano setup o deployment.
+
+## 25. README
+
+Il README deve spiegare in italiano:
+
+* requisiti;
+* installazione Windows;
+* avvio locale;
+* avvio LAN;
+* creazione superuser;
+* configurazione costi orari;
+* creazione utente commerciale;
+* backup;
+* ripristino backup;
+* configurazione PostgreSQL;
+* utilizzo Docker opzionale;
+* generazione PDF;
+* struttura del progetto;
+* aggiunta futura di una nuova fase;
+* aggiunta futura del calcolo automatico dei tempi;
+* principali formule economiche;
+* dati non ancora specificati dal committente.
+
+Aggiungi una sezione “Decisioni ancora da definire” contenente:
+
+* costi orari reali;
+* prezzi materiali reali;
+* regole di margine o ricarico;
+* IVA;
+* condizioni commerciali;
+* validità del preventivo;
+* logo e dati aziendali definitivi;
+* eventuali allegati tecnici;
+* eventuale importazione dal vecchio Excel.
+
+## 26. Criteri di accettazione
+
+Il lavoro è concluso solo quando:
+
+1. il progetto si installa da zero;
+2. le migrazioni vengono applicate;
+3. i dati iniziali vengono creati;
+4. è possibile accedere con login;
+5. un commerciale può creare un preventivo;
+6. il preventivo può contenere più articoli;
+7. ogni articolo può avere più materiali;
+8. tutte le undici fasi sono presenti;
+9. le fasi possono essere attivate o disattivate;
+10. le macchine corrette sono disponibili nelle rispettive fasi;
+11. Macchine Utensili e Saldatura consentono più operazioni;
+12. i costi sono calcolati correttamente;
+13. i costi storici sono protetti dagli snapshot;
+14. il riepilogo mostra fattibilità e costi mancanti;
+15. il prezzo commerciale può essere inserito manualmente;
+16. viene generato un PDF cliente;
+17. il PDF non espone dati industriali interni;
+18. un preventivo può essere duplicato;
+19. la ricerca funziona;
+20. gli script Windows sono presenti;
+21. l’app può essere avviata su rete locale;
+22. i test passano;
+23. `python manage.py check` non restituisce errori;
+24. `python manage.py makemigrations --check --dry-run` non rileva migrazioni mancanti;
+25. non rimangono funzionalità fondamentali simulate o non implementate.
+
+## 27. Modalità di esecuzione del lavoro
+
+Procedi in questo ordine:
+
+1. controlla se la directory contiene già codice utile;
+2. conserva eventuali file validi;
+3. inizializza il progetto se necessario;
+4. crea i modelli;
+5. crea ed esegui le migrazioni;
+6. crea il seed iniziale;
+7. implementa i servizi di calcolo;
+8. implementa form e validazioni;
+9. implementa l’interfaccia;
+10. implementa il riepilogo;
+11. implementa il PDF;
+12. implementa permessi e admin;
+13. implementa duplicazione e ricerca;
+14. crea gli script di setup, avvio e backup;
+15. crea i test;
+16. esegui tutti i controlli;
+17. correggi gli errori rilevati;
+18. aggiorna README e AGENTS.md.
+
+Non interromperti dopo la generazione dello scheletro.
+
+Non chiedere conferma per decisioni minori. Scegli l’implementazione più semplice coerente con questi requisiti.
+
+Al termine fornisci:
+
+* riepilogo dei file creati;
+* principali decisioni architetturali;
+* comandi eseguiti;
+* risultato dei test;
+* eventuali limitazioni rimaste;
+* istruzioni esatte per avviare l’app su Windows.

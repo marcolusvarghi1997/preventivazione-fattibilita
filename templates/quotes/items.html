@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block content %}
+{% include "quotes/_steps.html" %}
+<div class="page-heading"><div><h1>2. Articoli e materiali</h1><p>{{ quote.number }} — aggiungi almeno un materiale a ogni articolo.</p></div></div>
+<section class="card">
+  <h2>Aggiungi un articolo</h2>
+  <form method="post" action="{% url 'quotes:item_add' quote.pk %}" class="form-grid" hx-post="{% url 'quotes:item_add' quote.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
+    {% include "quotes/_form_fields.html" with form=item_form %}
+    <div class="form-actions full"><button class="button primary" type="submit">Aggiungi articolo</button></div>
+  </form>
+</section>
+<section id="items-list">
+{% for item in quote.items.all %}
+  <article class="card item-card">
+    <div class="card-heading"><div><h2>{{ item.code }}</h2><p>{{ item.description|default:"Nessuna descrizione" }} — Quantita: {{ item.quantity }}</p></div><a class="button secondary small" href="{% url 'quotes:item_edit' quote.pk item.pk %}">Modifica articolo</a></div>
+    <h3>Materiali</h3>
+    {% if item.materials.all %}<div class="table-wrap"><table><thead><tr><th>Materiale</th><th>Peso per pezzo</th><th>Costo acquisito/kg</th><th>Costo totale</th><th></th></tr></thead><tbody>
+      {% for row in item.materials.all %}<tr><td>{{ row.material.name }}</td><td>{{ row.weight_kg }} kg</td><td>{% if row.unit_cost_snapshot is None %}<span class="warning-text">Non valorizzato</span>{% else %}EUR {{ row.unit_cost_snapshot|floatformat:4 }}{% endif %}</td><td>{% if row.total_cost is None %}<span class="warning-text">Costo materiale non valorizzato</span>{% else %}EUR {{ row.total_cost|floatformat:2 }}{% endif %}</td><td><form method="post" action="{% url 'quotes:material_delete' quote.pk row.pk %}" hx-post="{% url 'quotes:material_delete' quote.pk row.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML" hx-confirm="Rimuovere questo materiale?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form></td></tr>{% endfor %}
+    </tbody></table></div>{% else %}<div class="alert error">Dato obbligatorio mancante: aggiungi almeno un materiale.</div>{% endif %}
+    <form method="post" action="{% url 'quotes:material_add' quote.pk item.pk %}" class="inline-form" hx-post="{% url 'quotes:material_add' quote.pk item.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
+      {% for field in material_form %}<div class="field"><label for="{{ field.id_for_label }}_{{ item.pk }}">{{ field.label }}</label>{{ field }}</div>{% endfor %}
+      <button class="button secondary" type="submit">Aggiungi materiale</button>
+    </form>
+    <form method="post" action="{% url 'quotes:item_delete' quote.pk item.pk %}" class="danger-zone" hx-confirm="Rimuovere l'articolo {{ item.code }} e tutte le sue lavorazioni?">{% csrf_token %}<button class="link-danger" type="submit">Rimuovi articolo</button></form>
+  </article>
+{% empty %}<div class="empty card"><strong>Nessun articolo.</strong><br>Aggiungi il primo articolo usando il modulo sopra.</div>{% endfor %}
+</section>
+<div class="form-actions sticky-actions"><a class="button secondary" href="{% url 'quotes:general' quote.pk %}">Indietro</a><a class="button primary large {% if not quote.items.exists %}disabled{% endif %}" href="{% url 'quotes:work' quote.pk %}">Salva e continua</a></div>
+{% endblock %}

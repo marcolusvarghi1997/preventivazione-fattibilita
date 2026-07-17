@@ -1,0 +1,4 @@
+{% extends "base.html" %}{% block content %}{% include "quotes/_steps.html" %}
+<div class="page-heading"><div><h1>Modifica articolo {{ item.code }}</h1><p>{{ quote.number }}</p></div></div>
+<form method="post" class="card form-grid">{% csrf_token %}{% include "quotes/_form_fields.html" with form=form %}<div class="form-actions full"><a class="button secondary" href="{% url 'quotes:items' quote.pk %}">Indietro</a><button class="button primary" type="submit">Salva articolo</button></div></form>
+{% endblock %}
