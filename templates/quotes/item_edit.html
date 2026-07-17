@@ -1,4 +1,5 @@
 {% extends "base.html" %}{% block content %}{% include "quotes/_steps.html" %}
 <div class="page-heading"><div><h1>Modifica articolo {{ item.code }}</h1><p>{{ quote.number }}</p></div></div>
-<form method="post" class="card form-grid">{% csrf_token %}{% include "quotes/_form_fields.html" with form=form %}<div class="form-actions full"><a class="button secondary" href="{% url 'quotes:items' quote.pk %}">Indietro</a><button class="button primary" type="submit">Salva articolo</button></div></form>
+{% if quote.status == "archived" %}<div class="alert warning"><strong>Preventivo archiviato:</strong> l'articolo e disponibile in sola lettura.</div>{% endif %}
+<form method="post" class="card form-grid">{% csrf_token %}{% if quote.status == "archived" %}<fieldset disabled class="read-only-fields full">{% endif %}{% include "quotes/_form_fields.html" with form=form %}{% if quote.status == "archived" %}</fieldset>{% endif %}<div class="form-actions full"><a class="button secondary" href="{% url 'quotes:items' quote.pk %}">Indietro</a>{% if quote.status != "archived" %}<button class="button primary" type="submit">Salva articolo</button>{% endif %}</div></form>
 {% endblock %}

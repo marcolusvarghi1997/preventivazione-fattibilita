@@ -60,7 +60,11 @@ if os.getenv("DB_ENGINE", "sqlite").lower() in {"postgres", "postgresql"}:
         "PORT": os.getenv("DB_PORT", "5432"),
     }}
 else:
-    DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": BASE_DIR / "db.sqlite3", "OPTIONS": {"timeout": 20}}}
+    DATABASES = {"default": {
+        "ENGINE": "django.db.backends.sqlite3",
+        "NAME": Path(os.getenv("SQLITE_DB_PATH", BASE_DIR / "db.sqlite3")),
+        "OPTIONS": {"timeout": 20},
+    }}
 
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},

@@ -1,7 +1,9 @@
 from decimal import Decimal
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.management import call_command
 from django.test import TestCase
+from django.urls import reverse
 
 from apps.catalog.models import Material, PhaseDefinition, ProductionResource
 from apps.quotes.forms import TreatmentForm
@@ -38,7 +40,7 @@ class ValidationTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("description", form.errors)
 
-    def test_zero_resource_cost_is_warning_not_error(self):
+    def test_zero_resource_cost_blocks_completion(self):
         phase_def = PhaseDefinition.objects.get(code="sabbiatura")
         phase = ItemPhase.objects.create(item=self.item, definition=phase_def, active=True, display_order=6)
         resource = ProductionResource.objects.get(phase=phase_def)
@@ -47,8 +49,67 @@ class ValidationTests(TestCase):
             operators_snapshot=1, resource_name_snapshot=resource.name, hourly_cost_snapshot=0,
         )
         result = validate_quote(self.quote)
-        self.assertFalse(result.errors)
-        self.assertTrue(any("costo orario" in warning.lower() for warning in result.warnings))
+        self.assertFalse(result.can_complete)
+        self.assertTrue(any("costo orario" in error.lower() for error in result.errors))
+        self.assertFalse(any("costo orario" in warning.lower() for warning in result.warnings))
+
+
+class HighSeverityWorkflowTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        call_command("seed_initial_data", verbosity=0)
+        cls.user = get_user_model().objects.create_user("workflow", password="pass")
+        cls.user.groups.add(Group.objects.get(name="Commerciale"))
+        cls.material = Material.objects.create(name="Workflow material", current_cost_per_kg=Decimal("2"))
+
+    def setUp(self):
+        self.quote = Quote.objects.create(author=self.user, offered_price=Decimal("100"))
+        self.item = QuoteItem.objects.create(quote=self.quote, code="FLOW", quantity=1)
+        ItemMaterial.objects.create(
+            item=self.item,
+            material=self.material,
+            weight_kg=Decimal("1"),
+            unit_cost_snapshot=Decimal("2"),
+        )
+        self.client.force_login(self.user)
+
+    def test_archived_quote_rejects_summary_and_nested_writes(self):
+        self.quote.status = Quote.Status.ARCHIVED
+        self.quote.save(update_fields=["status"])
+
+        summary_response = self.client.post(
+            reverse("quotes:summary", args=[self.quote.pk]),
+            {"feasibility": "internal", "offered_price": "999"},
+            follow=True,
+        )
+        delete_response = self.client.post(
+            reverse("quotes:item_delete", args=[self.quote.pk, self.item.pk]),
+            follow=True,
+        )
+
+        self.quote.refresh_from_db()
+        self.assertEqual(self.quote.offered_price, Decimal("100"))
+        self.assertTrue(QuoteItem.objects.filter(pk=self.item.pk).exists())
+        self.assertContains(summary_response, "non puo essere modificato")
+        self.assertContains(delete_response, "non puo essere modificato")
+
+    def test_operation_error_message_includes_invalid_field(self):
+        phase_def = PhaseDefinition.objects.get(code="saldatura")
+        phase = ItemPhase.objects.create(item=self.item, definition=phase_def, active=True, display_order=5)
+        resource = ProductionResource.objects.filter(phase=phase_def).first()
+
+        response = self.client.post(reverse("quotes:operation_add", args=[self.quote.pk, phase.pk]), {
+            f"op-{phase.pk}-resource": resource.pk,
+            f"op-{phase.pk}-working_minutes": "10",
+            f"op-{phase.pk}-setup_minutes": "0",
+            f"op-{phase.pk}-operators_snapshot": "0",
+            f"op-{phase.pk}-time_basis": "per_piece",
+            f"op-{phase.pk}-notes": "",
+        }, follow=True)
+
+        self.assertContains(response, "Operatori")
+        self.assertContains(response, "maggiore o uguale a 1")
+        self.assertFalse(phase.operations.exists())
 
 
 class DuplicationTests(TestCase):

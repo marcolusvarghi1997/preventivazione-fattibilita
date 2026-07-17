@@ -36,6 +36,11 @@ class QuoteItemForm(forms.ModelForm):
         fields = ("code", "quantity", "description", "revision", "dimensions", "technical_notes", "feasibility")
         widgets = {"technical_notes": forms.Textarea(attrs={"rows": 3}), "quantity": forms.NumberInput(attrs={"min": 1})}
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["quantity"].min_value = 1
+        self.fields["quantity"].widget.attrs["min"] = "1"
+
     def save(self, commit=True):
         item = super().save(commit=False)
         item.feasibility_manually_set = item.feasibility != Feasibility.TO_CHECK
@@ -81,6 +86,8 @@ class TimeOperationForm(forms.ModelForm):
     def __init__(self, *args, phase=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.phase = phase
+        self.fields["operators_snapshot"].min_value = 1
+        self.fields["operators_snapshot"].widget.attrs["min"] = "1"
         if phase:
             resources = ProductionResource.objects.filter(phase=phase.definition, active=True)
             self.fields["resource"].queryset = resources

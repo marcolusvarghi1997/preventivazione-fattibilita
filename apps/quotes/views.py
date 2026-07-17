@@ -1,3 +1,5 @@
+from functools import wraps
+
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.paginator import Paginator
@@ -28,6 +30,30 @@ def get_quote(pk: int) -> Quote:
     return get_object_or_404(quote_queryset(), pk=pk)
 
 
+def editable_quote_required(view_func):
+    """Reject writes to archived quotes while keeping their data readable."""
+    @wraps(view_func)
+    def wrapped(request: HttpRequest, *args, **kwargs):
+        pk = kwargs.get("pk")
+        if request.method != "GET" and pk and get_quote(pk).status == Quote.Status.ARCHIVED:
+            messages.error(
+                request,
+                "Il preventivo e archiviato e non puo essere modificato. Duplicalo per creare una nuova bozza modificabile.",
+            )
+            return redirect("quotes:summary", pk=pk)
+        return view_func(request, *args, **kwargs)
+
+    return wrapped
+
+
+def form_error_summary(form) -> str:
+    details = []
+    for field_name, errors in form.errors.items():
+        label = "Dati inseriti" if field_name == "__all__" else form.fields[field_name].label
+        details.append(f"{label}: {' '.join(errors)}")
+    return " ".join(details)
+
+
 @login_required
 @permission_required("quotes.view_quote", raise_exception=True)
 def dashboard(request: HttpRequest) -> HttpResponse:
@@ -37,6 +63,7 @@ def dashboard(request: HttpRequest) -> HttpResponse:
 
 @login_required
 @permission_required("quotes.add_quote", raise_exception=True)
+@editable_quote_required
 def quote_general(request: HttpRequest, pk: int | None = None) -> HttpResponse:
     quote = get_quote(pk) if pk else None
     if quote and not request.user.has_perm("quotes.change_quote"):
@@ -65,6 +92,7 @@ def quote_items(request: HttpRequest, pk: int) -> HttpResponse:
 @login_required
 @permission_required("quotes.add_quoteitem", raise_exception=True)
 @require_POST
+@editable_quote_required
 def item_add(request: HttpRequest, pk: int) -> HttpResponse:
     quote = get_quote(pk)
     form = QuoteItemForm(request.POST)
@@ -84,6 +112,7 @@ def item_add(request: HttpRequest, pk: int) -> HttpResponse:
 
 @login_required
 @permission_required("quotes.change_quoteitem", raise_exception=True)
+@editable_quote_required
 def item_edit(request: HttpRequest, pk: int, item_id: int) -> HttpResponse:
     quote = get_quote(pk)
     item = get_object_or_404(QuoteItem, pk=item_id, quote=quote)
@@ -98,6 +127,7 @@ def item_edit(request: HttpRequest, pk: int, item_id: int) -> HttpResponse:
 @login_required
 @permission_required("quotes.delete_quoteitem", raise_exception=True)
 @require_POST
+@editable_quote_required
 def item_delete(request: HttpRequest, pk: int, item_id: int) -> HttpResponse:
     item = get_object_or_404(QuoteItem, pk=item_id, quote_id=pk)
     code = item.code
@@ -109,6 +139,7 @@ def item_delete(request: HttpRequest, pk: int, item_id: int) -> HttpResponse:
 @login_required
 @permission_required("quotes.add_itemmaterial", raise_exception=True)
 @require_POST
+@editable_quote_required
 def material_add(request: HttpRequest, pk: int, item_id: int) -> HttpResponse:
     item = get_object_or_404(QuoteItem, pk=item_id, quote_id=pk)
     form = ItemMaterialForm(request.POST)
@@ -130,6 +161,7 @@ def material_add(request: HttpRequest, pk: int, item_id: int) -> HttpResponse:
 @login_required
 @permission_required("quotes.delete_itemmaterial", raise_exception=True)
 @require_POST
+@editable_quote_required
 def material_delete(request: HttpRequest, pk: int, material_id: int) -> HttpResponse:
     row = get_object_or_404(ItemMaterial, pk=material_id, item__quote_id=pk)
     row.delete()
@@ -168,6 +200,7 @@ def quote_work(request: HttpRequest, pk: int) -> HttpResponse:
 @login_required
 @permission_required("quotes.change_itemphase", raise_exception=True)
 @require_POST
+@editable_quote_required
 def phase_update(request: HttpRequest, pk: int, phase_id: int) -> HttpResponse:
     phase = get_object_or_404(ItemPhase, pk=phase_id, item__quote_id=pk)
     form = PhaseForm(request.POST, instance=phase, prefix=f"phase-{phase.pk}")
@@ -185,6 +218,7 @@ def phase_update(request: HttpRequest, pk: int, phase_id: int) -> HttpResponse:
 @login_required
 @permission_required("quotes.add_timeoperation", raise_exception=True)
 @require_POST
+@editable_quote_required
 def operation_add(request: HttpRequest, pk: int, phase_id: int) -> HttpResponse:
     phase = get_object_or_404(ItemPhase.objects.select_related("definition", "item"), pk=phase_id, item__quote_id=pk)
     config = phase_registry[phase.definition.code]
@@ -202,13 +236,14 @@ def operation_add(request: HttpRequest, pk: int, phase_id: int) -> HttpResponse:
         phase.save(update_fields=["active"])
         messages.success(request, "Operazione aggiunta e costo ricalcolato.")
     else:
-        messages.error(request, "Operazione non aggiunta: " + " ".join(str(e) for e in form.non_field_errors()))
+        messages.error(request, "Operazione non aggiunta. " + form_error_summary(form))
     return redirect("quotes:work", pk=pk)
 
 
 @login_required
 @permission_required("quotes.delete_timeoperation", raise_exception=True)
 @require_POST
+@editable_quote_required
 def operation_delete(request: HttpRequest, pk: int, operation_id: int) -> HttpResponse:
     operation = get_object_or_404(TimeOperation, pk=operation_id, phase__item__quote_id=pk)
     operation.delete()
@@ -219,6 +254,7 @@ def operation_delete(request: HttpRequest, pk: int, operation_id: int) -> HttpRe
 @login_required
 @permission_required("quotes.add_directcost", raise_exception=True)
 @require_POST
+@editable_quote_required
 def direct_cost_add(request: HttpRequest, pk: int, phase_id: int) -> HttpResponse:
     phase = get_object_or_404(ItemPhase, pk=phase_id, item__quote_id=pk)
     if phase.definition.code not in {"lavorazioni-extra", "acquisti-esterni"}:
@@ -243,6 +279,7 @@ def direct_cost_add(request: HttpRequest, pk: int, phase_id: int) -> HttpRespons
 @login_required
 @permission_required("quotes.delete_directcost", raise_exception=True)
 @require_POST
+@editable_quote_required
 def direct_cost_delete(request: HttpRequest, pk: int, cost_id: int) -> HttpResponse:
     get_object_or_404(DirectCost, pk=cost_id, phase__item__quote_id=pk).delete()
     messages.success(request, "Costo rimosso.")
@@ -252,6 +289,7 @@ def direct_cost_delete(request: HttpRequest, pk: int, cost_id: int) -> HttpRespo
 @login_required
 @permission_required("quotes.add_externaltreatment", raise_exception=True)
 @require_POST
+@editable_quote_required
 def treatment_add(request: HttpRequest, pk: int, phase_id: int) -> HttpResponse:
     phase = get_object_or_404(ItemPhase, pk=phase_id, item__quote_id=pk, definition__code="trattamento-esterno")
     form = TreatmentForm(request.POST, prefix=f"treat-{phase.pk}")
@@ -270,6 +308,7 @@ def treatment_add(request: HttpRequest, pk: int, phase_id: int) -> HttpResponse:
 @login_required
 @permission_required("quotes.delete_externaltreatment", raise_exception=True)
 @require_POST
+@editable_quote_required
 def treatment_delete(request: HttpRequest, pk: int, treatment_id: int) -> HttpResponse:
     get_object_or_404(ExternalTreatment, pk=treatment_id, phase__item__quote_id=pk).delete()
     messages.success(request, "Trattamento rimosso.")
@@ -278,6 +317,7 @@ def treatment_delete(request: HttpRequest, pk: int, treatment_id: int) -> HttpRe
 
 @login_required
 @permission_required("quotes.view_quote", raise_exception=True)
+@editable_quote_required
 def quote_summary(request: HttpRequest, pk: int) -> HttpResponse:
     quote = get_quote(pk)
     form = QuoteSummaryForm(request.POST or None, instance=quote)
@@ -292,6 +332,7 @@ def quote_summary(request: HttpRequest, pk: int) -> HttpResponse:
 @login_required
 @permission_required("quotes.change_quote", raise_exception=True)
 @require_POST
+@editable_quote_required
 def quote_complete(request: HttpRequest, pk: int) -> HttpResponse:
     quote = get_quote(pk)
     result = validate_quote(quote)

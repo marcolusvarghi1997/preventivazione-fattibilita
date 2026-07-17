@@ -84,7 +84,7 @@ La dashboard propone **Nuovo preventivo** e **Cerca preventivo**. La compilazion
 3. undici fasi di lavorazione, attivabili singolarmente;
 4. riepilogo, fattibilità, prezzo offerto, PDF e completamento.
 
-I dati non valorizzati che non impediscono il lavoro (costo materiale mancante, costo orario zero, risposta “Da verificare”) sono segnalati come avvisi. Gli errori bloccanti impediscono solo il completamento, non il salvataggio in bozza.
+I dati non valorizzati che non impediscono il lavoro (costo materiale mancante, risposta “Da verificare”) sono segnalati come avvisi. Un costo orario pari a zero su una lavorazione attiva blocca invece il completamento, perché produrrebbe un costo industriale incompleto; resta possibile salvare il preventivo in bozza.
 
 ## Formule economiche
 
@@ -158,6 +158,15 @@ Il compose avvia applicazione e PostgreSQL con volume persistente. Docker non è
 .\.venv\Scripts\python.exe manage.py check
 .\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
 ```
+
+I test end-to-end dei flussi critici usano Playwright con un database SQLite temporaneo, senza modificare `db.sqlite3`:
+
+```powershell
+npm install
+npm run test:playwright
+```
+
+È richiesto Microsoft Edge oppure Google Chrome. La variabile opzionale `PYTHON_EXE` permette di indicare un interprete diverso da `.\.venv\Scripts\python.exe`; `PLAYWRIGHT_BROWSER_PATH` permette di indicare esplicitamente il browser.
 
 ## Struttura
 

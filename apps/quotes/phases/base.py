@@ -23,12 +23,12 @@ class PhaseConfig:
                     errors.append(f"{self.name}: indicare un tempo maggiore di zero.")
                 if operation.resource.phase_id != phase.definition_id:
                     errors.append(f"{self.name}: la risorsa scelta non appartiene a questa fase.")
+                if operation.hourly_cost_snapshot == 0:
+                    errors.append(
+                        f"{self.name}: configurare il costo orario della risorsa "
+                        f"'{operation.resource_name_snapshot}' prima di completare il preventivo."
+                    )
         return errors
 
     def warnings(self, phase) -> list[str]:
-        if not phase.active:
-            return []
-        return [
-            f"{self.name}: costo orario della risorsa '{op.resource_name_snapshot}' non configurato."
-            for op in phase.operations.all() if op.hourly_cost_snapshot == 0
-        ]
+        return []
