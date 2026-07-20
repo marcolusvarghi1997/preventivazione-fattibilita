@@ -1,34 +1,74 @@
 {% extends "base.html" %}
 {% block content %}
 {% include "quotes/_steps.html" %}
-<div class="page-heading"><div><h1>2. Articoli e materiali</h1><p>{{ quote.number }} — aggiungi almeno un materiale a ogni articolo.</p></div></div>
+<div class="page-heading section-heading">
+  <div><span class="eyebrow">Preventivo {{ quote.number }}</span><h1>Articoli</h1><p>Raccogli in un solo blocco i dati dell’articolo e del pezzo.</p></div>
+  {% if quote.status != "archived" %}<button class="button primary" type="button" data-add-article aria-controls="article-drafts"><span aria-hidden="true">＋</span> Aggiungi articolo</button>{% endif %}
+</div>
 {% if quote.status == "archived" %}<div class="alert warning"><strong>Preventivo archiviato:</strong> i dati sono disponibili in sola lettura. Duplica il preventivo dal riepilogo per modificarli.</div>{% endif %}
+
 {% if quote.status != "archived" %}
-<section class="card">
-  <h2>Aggiungi un articolo</h2>
-  <form method="post" action="{% url 'quotes:item_add' quote.pk %}" class="form-grid" hx-post="{% url 'quotes:item_add' quote.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
-    {% include "quotes/_form_fields.html" with form=item_form %}
-    <div class="form-actions full"><button class="button primary" type="submit">Aggiungi articolo</button></div>
-  </form>
-</section>
+<div id="article-drafts" class="article-list" aria-live="polite">
+  {% if show_draft %}
+  <details class="article-card draft-card has-errors" open data-new-article>
+    <summary class="article-summary"><span class="article-index">Nuovo</span><span><strong>Articolo da completare</strong><small>Correggi i campi indicati</small></span><span class="disclosure">Comprimi</span></summary>
+    <div class="article-body">
+      <form method="post" action="{% url 'quotes:item_add' quote.pk %}" class="article-create-form" hx-post="{% url 'quotes:item_add' quote.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
+        <section class="article-section"><h2>Dati articolo</h2><div class="form-grid article-fields">{% include "quotes/_form_fields.html" with form=draft_item_form %}</div></section>
+        <section class="article-section piece-section"><h2>Dati del pezzo</h2><p class="section-note">Il costo del materiale viene acquisito al salvataggio.</p><div class="form-grid piece-fields">{% include "quotes/_form_fields.html" with form=draft_material_form %}</div></section>
+        <div class="form-actions"><button class="button ghost" type="button" data-remove-draft>Scarta</button><button class="button primary" type="submit">Salva articolo</button></div>
+      </form>
+    </div>
+  </details>
+  {% endif %}
+</div>
+
+<template id="article-draft-template">
+  <details class="article-card draft-card" open data-new-article>
+    <summary class="article-summary"><span class="article-index">Nuovo</span><span><strong>Articolo da completare</strong><small>Inserisci articolo, materiale e peso</small></span><span class="disclosure">Comprimi</span></summary>
+    <div class="article-body">
+      <form method="post" action="{% url 'quotes:item_add' quote.pk %}" class="article-create-form" hx-post="{% url 'quotes:item_add' quote.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
+        <section class="article-section"><h2>Dati articolo</h2><div class="form-grid article-fields">{% include "quotes/_form_fields.html" with form=draft_item_form %}</div></section>
+        <section class="article-section piece-section"><h2>Dati del pezzo</h2><p class="section-note">Il costo del materiale viene acquisito al salvataggio.</p><div class="form-grid piece-fields">{% include "quotes/_form_fields.html" with form=draft_material_form %}</div></section>
+        <div class="form-actions"><button class="button ghost" type="button" data-remove-draft>Scarta</button><button class="button primary" type="submit">Salva articolo</button></div>
+      </form>
+    </div>
+  </details>
+</template>
 {% endif %}
-<section id="items-list">
-{% for item in quote.items.all %}
-  <article class="card item-card">
-    <div class="card-heading"><div><h2>{{ item.code }}</h2><p>{{ item.description|default:"Nessuna descrizione" }} — Quantita: {{ item.quantity }}</p></div>{% if quote.status != "archived" %}<a class="button secondary small" href="{% url 'quotes:item_edit' quote.pk item.pk %}">Modifica articolo</a>{% endif %}</div>
-    <h3>Materiali</h3>
-    {% if item.materials.all %}<div class="table-wrap"><table><thead><tr><th>Materiale</th><th>Peso per pezzo</th><th>Costo acquisito/kg</th><th>Costo totale</th><th></th></tr></thead><tbody>
-      {% for row in item.materials.all %}<tr><td>{{ row.material.name }}</td><td>{{ row.weight_kg }} kg</td><td>{% if row.unit_cost_snapshot is None %}<span class="warning-text">Non valorizzato</span>{% else %}EUR {{ row.unit_cost_snapshot|floatformat:4 }}{% endif %}</td><td>{% if row.total_cost is None %}<span class="warning-text">Costo materiale non valorizzato</span>{% else %}EUR {{ row.total_cost|floatformat:2 }}{% endif %}</td><td>{% if quote.status != "archived" %}<form method="post" action="{% url 'quotes:material_delete' quote.pk row.pk %}" hx-post="{% url 'quotes:material_delete' quote.pk row.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML" hx-confirm="Rimuovere il materiale {{ row.material.name }} dall'articolo {{ item.code }}?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form>{% endif %}</td></tr>{% endfor %}
-    </tbody></table></div>{% else %}<div class="alert error">Dato obbligatorio mancante: aggiungi almeno un materiale.</div>{% endif %}
-    {% if quote.status != "archived" %}
-    <form method="post" action="{% url 'quotes:material_add' quote.pk item.pk %}" class="inline-form" hx-post="{% url 'quotes:material_add' quote.pk item.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
-      {% for field in material_form %}<div class="field"><label for="{{ field.id_for_label }}_{{ item.pk }}">{{ field.label }}</label>{{ field }}</div>{% endfor %}
-      <button class="button secondary" type="submit">Aggiungi materiale</button>
-    </form>
-    <form method="post" action="{% url 'quotes:item_delete' quote.pk item.pk %}" class="danger-zone" data-confirm="Rimuovere l'articolo {{ item.code }} e tutte le sue lavorazioni?">{% csrf_token %}<button class="link-danger" type="submit">Rimuovi articolo</button></form>
-    {% endif %}
-  </article>
-{% empty %}<div class="empty card"><strong>Nessun articolo.</strong><br>Aggiungi il primo articolo usando il modulo sopra.</div>{% endfor %}
+
+<section id="items-list" class="article-list" aria-label="Articoli del preventivo">
+{% for row in item_rows %}
+  <details class="article-card {% if row.item_form.errors or row.material_form.errors %}has-errors{% endif %}" {% if forloop.first or row.item_form.errors or row.material_form.errors %}open{% endif %} data-article-card>
+    <summary class="article-summary">
+      <span class="article-index">{{ forloop.counter|stringformat:"02d" }}</span>
+      <span><strong>{{ row.item.code }}</strong><small>{{ row.item.description|default:"Nessuna descrizione" }} · {{ row.item.quantity }} pz · {{ row.item.materials.count }} material{{ row.item.materials.count|pluralize:"e,i" }}</small></span>
+      <span class="disclosure">Dettagli</span>
+    </summary>
+    <div class="article-body">
+      <section class="article-section">
+        <div class="subheading"><h2>Dati articolo</h2><span class="status">{{ row.item.get_feasibility_display }}</span></div>
+        {% if quote.status != "archived" %}
+        <form method="post" action="{% url 'quotes:item_edit' quote.pk row.item.pk %}" class="form-grid article-fields" hx-post="{% url 'quotes:item_edit' quote.pk row.item.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}{% include "quotes/_form_fields.html" with form=row.item_form %}<div class="form-actions full"><button class="button secondary" type="submit">Salva dati articolo</button></div></form>
+        {% else %}
+        <dl class="data-grid"><div><dt>Codice</dt><dd>{{ row.item.code }}</dd></div><div><dt>Quantità</dt><dd>{{ row.item.quantity }}</dd></div><div><dt>Descrizione</dt><dd>{{ row.item.description|default:"—" }}</dd></div><div><dt>Revisione</dt><dd>{{ row.item.revision|default:"—" }}</dd></div><div><dt>Dimensioni</dt><dd>{{ row.item.dimensions|default:"—" }}</dd></div><div><dt>Note tecniche</dt><dd>{{ row.item.technical_notes|default:"—" }}</dd></div></dl>
+        {% endif %}
+      </section>
+
+      <section class="article-section piece-section">
+        <div class="subheading"><div><h2>Dati del pezzo</h2><p class="section-note">Materiali e peso riferiti al singolo pezzo.</p></div><span class="status">{{ row.item.materials.count }} material{{ row.item.materials.count|pluralize:"e,i" }}</span></div>
+        {% if row.item.materials.all %}<div class="table-wrap material-table"><table><thead><tr><th>Materiale</th><th>Peso / pezzo</th><th>Costo acquisito / kg</th><th>Costo totale</th><th><span class="sr-only">Azioni</span></th></tr></thead><tbody>
+          {% for material_row in row.item.materials.all %}<tr><td data-label="Materiale"><strong>{{ material_row.material.name }}</strong></td><td data-label="Peso / pezzo">{{ material_row.weight_kg }} kg</td><td data-label="Costo acquisito / kg">{% if material_row.unit_cost_snapshot is None %}<span class="warning-text">Non valorizzato</span>{% else %}€ {{ material_row.unit_cost_snapshot|floatformat:4 }}{% endif %}</td><td data-label="Costo totale">{% if material_row.total_cost is None %}<span class="warning-text">Non valorizzato</span>{% else %}€ {{ material_row.total_cost|floatformat:2 }}{% endif %}</td><td class="row-actions">{% if quote.status != "archived" %}<form method="post" action="{% url 'quotes:material_delete' quote.pk material_row.pk %}" data-confirm="Rimuovere il materiale {{ material_row.material.name }} dall’articolo {{ row.item.code }}?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form>{% endif %}</td></tr>{% endfor %}
+        </tbody></table></div>{% else %}<div class="alert error">Dato obbligatorio mancante: aggiungi almeno un materiale.</div>{% endif %}
+        {% if quote.status != "archived" %}
+        <details class="add-panel" {% if row.material_form.errors %}open{% endif %}><summary>Aggiungi un altro materiale</summary><form method="post" action="{% url 'quotes:material_add' quote.pk row.item.pk %}" class="form-grid material-add-form" hx-post="{% url 'quotes:material_add' quote.pk row.item.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}{% include "quotes/_form_fields.html" with form=row.material_form %}<div class="form-actions"><button class="button secondary" type="submit">Aggiungi materiale</button></div></form></details>
+        {% endif %}
+      </section>
+
+      {% if quote.status != "archived" %}<div class="article-actions"><form method="post" action="{% url 'quotes:item_duplicate' quote.pk row.item.pk %}" data-confirm="Duplicare l’articolo {{ row.item.code }} con materiali e lavorazioni?">{% csrf_token %}<button class="button ghost" type="submit">Duplica</button></form><form method="post" action="{% url 'quotes:item_delete' quote.pk row.item.pk %}" data-confirm="Rimuovere l’articolo {{ row.item.code }}, i materiali e tutte le lavorazioni collegate?">{% csrf_token %}<button class="button danger ghost" type="submit">Elimina articolo</button></form></div>{% endif %}
+    </div>
+  </details>
+{% empty %}<div class="empty card"><strong>Nessun articolo presente.</strong><br>Usa “Aggiungi articolo” per creare il primo blocco completo.</div>{% endfor %}
 </section>
-<div class="form-actions sticky-actions"><a class="button secondary" href="{% url 'quotes:general' quote.pk %}">Indietro</a><a class="button primary large {% if not quote.items.exists %}disabled{% endif %}" href="{% url 'quotes:work' quote.pk %}">{% if quote.status == "archived" %}Consulta lavorazioni{% else %}Salva e continua{% endif %}</a></div>
+<div class="form-actions sticky-actions"><a class="button secondary" href="{% url 'quotes:general' quote.pk %}">Indietro</a><a class="button primary {% if not quote.items.exists %}disabled{% endif %}" href="{% url 'quotes:work' quote.pk %}">{% if quote.status == "archived" %}Consulta lavorazioni{% else %}Salva e continua{% endif %}</a></div>
 {% endblock %}

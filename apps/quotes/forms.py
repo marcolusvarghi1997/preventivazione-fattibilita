@@ -27,6 +27,7 @@ class QuoteSummaryForm(forms.ModelForm):
     class Meta:
         model = Quote
         fields = ("feasibility", "offered_price")
+        labels = {"feasibility": "Fattibilità"}
         widgets = {"offered_price": forms.NumberInput(attrs={"min": "0", "step": "0.01"})}
 
 
@@ -34,6 +35,7 @@ class QuoteItemForm(forms.ModelForm):
     class Meta:
         model = QuoteItem
         fields = ("code", "quantity", "description", "revision", "dimensions", "technical_notes", "feasibility")
+        labels = {"quantity": "Quantità", "feasibility": "Fattibilità articolo"}
         widgets = {"technical_notes": forms.Textarea(attrs={"rows": 3}), "quantity": forms.NumberInput(attrs={"min": 1})}
 
     def __init__(self, *args, **kwargs):
@@ -64,7 +66,7 @@ class PhaseForm(forms.ModelForm):
     class Meta:
         model = ItemPhase
         fields = ("active", "notes", "internal_answer")
-        widgets = {"active": forms.RadioSelect(choices=((True, "Si, attiva"), (False, "No, non attiva"))), "notes": forms.Textarea(attrs={"rows": 2})}
+        widgets = {"active": forms.RadioSelect(choices=((True, "Sì, attiva"), (False, "No, non attiva"))), "notes": forms.Textarea(attrs={"rows": 2})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -128,6 +130,6 @@ class TreatmentForm(forms.ModelForm):
 class QuoteSearchForm(forms.Form):
     q = forms.CharField(label="Numero, codice, cliente o descrizione", required=False)
     status = forms.ChoiceField(label="Stato", required=False, choices=(("", "Tutti"), *Quote.Status.choices))
-    feasibility = forms.ChoiceField(label="Fattibilita", required=False, choices=(("", "Tutte"), *Feasibility.choices))
+    feasibility = forms.ChoiceField(label="Fattibilità", required=False, choices=(("", "Tutte"), *Feasibility.choices))
     date_from = forms.DateField(label="Dal", required=False, widget=DateInput())
     date_to = forms.DateField(label="Al", required=False, widget=DateInput())

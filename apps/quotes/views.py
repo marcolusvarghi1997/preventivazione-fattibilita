@@ -15,7 +15,7 @@ from .forms import (
 )
 from .models import DirectCost, ExternalTreatment, Feasibility, ItemMaterial, ItemPhase, Quote, QuoteItem, TimeOperation
 from .phases import phase_registry
-from .services.quotes import duplicate_quote, initialize_item_phases
+from .services.quotes import duplicate_item, duplicate_quote, initialize_item_phases
 from .services.validation import validate_quote
 
 
@@ -54,6 +54,30 @@ def form_error_summary(form) -> str:
     return " ".join(details)
 
 
+def build_item_rows(quote: Quote, *, item_override=None, material_override=None):
+    rows = []
+    for item in quote.items.all():
+        item_form = item_override if item_override and item_override.instance.pk == item.pk else QuoteItemForm(
+            instance=item, prefix=f"item-{item.pk}"
+        )
+        material_form = material_override if material_override and material_override.prefix == f"material-{item.pk}" else ItemMaterialForm(
+            prefix=f"material-{item.pk}"
+        )
+        rows.append({"item": item, "item_form": item_form, "material_form": material_form})
+    return rows
+
+
+def render_items(request, quote, *, item_form=None, material_form=None, draft_item_form=None, draft_material_form=None, status=200):
+    return render(request, "quotes/items.html", {
+        "quote": quote,
+        "item_rows": build_item_rows(quote, item_override=item_form, material_override=material_form),
+        "draft_item_form": draft_item_form or QuoteItemForm(),
+        "draft_material_form": draft_material_form or ItemMaterialForm(),
+        "show_draft": bool(draft_item_form or draft_material_form),
+        "step": 2,
+    }, status=status)
+
+
 @login_required
 @permission_required("quotes.view_quote", raise_exception=True)
 def dashboard(request: HttpRequest) -> HttpResponse:
@@ -84,9 +108,7 @@ def quote_general(request: HttpRequest, pk: int | None = None) -> HttpResponse:
 @permission_required("quotes.view_quote", raise_exception=True)
 def quote_items(request: HttpRequest, pk: int) -> HttpResponse:
     quote = get_quote(pk)
-    return render(request, "quotes/items.html", {
-        "quote": quote, "item_form": QuoteItemForm(), "material_form": ItemMaterialForm(), "step": 2,
-    })
+    return render_items(request, quote)
 
 
 @login_required
@@ -96,17 +118,25 @@ def quote_items(request: HttpRequest, pk: int) -> HttpResponse:
 def item_add(request: HttpRequest, pk: int) -> HttpResponse:
     quote = get_quote(pk)
     form = QuoteItemForm(request.POST)
-    if form.is_valid():
+    material_form = ItemMaterialForm(request.POST)
+    if form.is_valid() and material_form.is_valid():
         with transaction.atomic():
             item = form.save(commit=False)
             item.quote = quote
             item.display_order = quote.items.count() + 1
             item.save()
+            material = material_form.cleaned_data["material"]
+            row = material_form.save(commit=False)
+            row.item = item
+            row.unit_cost_snapshot = material.current_cost_per_kg
+            row.save()
             initialize_item_phases(item)
-        messages.success(request, f"Articolo {item.code} aggiunto. Ora aggiungi almeno un materiale.")
+        messages.success(request, f"Articolo {item.code} aggiunto con il materiale e il costo corrente acquisito.")
     else:
         messages.error(request, "Articolo non aggiunto: controllare i campi indicati.")
-        return render(request, "quotes/items.html", {"quote": get_quote(pk), "item_form": form, "material_form": ItemMaterialForm(), "step": 2}, status=422)
+        return render_items(
+            request, get_quote(pk), draft_item_form=form, draft_material_form=material_form, status=422
+        )
     return redirect("quotes:items", pk=pk)
 
 
@@ -116,12 +146,32 @@ def item_add(request: HttpRequest, pk: int) -> HttpResponse:
 def item_edit(request: HttpRequest, pk: int, item_id: int) -> HttpResponse:
     quote = get_quote(pk)
     item = get_object_or_404(QuoteItem, pk=item_id, quote=quote)
-    form = QuoteItemForm(request.POST or None, instance=item)
+    prefix = f"item-{item.pk}" if request.method == "POST" else None
+    form = QuoteItemForm(request.POST or None, instance=item, prefix=prefix)
     if request.method == "POST" and form.is_valid():
         form.save()
         messages.success(request, "Articolo aggiornato.")
         return redirect("quotes:items", pk=pk)
+    if request.method == "POST":
+        messages.error(request, "Articolo non aggiornato: controllare i campi indicati.")
+        return render_items(request, quote, item_form=form, status=422)
     return render(request, "quotes/item_edit.html", {"quote": quote, "item": item, "form": form, "step": 2})
+
+
+@login_required
+@permission_required("quotes.add_quoteitem", raise_exception=True)
+@require_POST
+@editable_quote_required
+def item_duplicate(request: HttpRequest, pk: int, item_id: int) -> HttpResponse:
+    source = get_object_or_404(
+        QuoteItem.objects.prefetch_related(
+            "materials", "phases__operations", "phases__direct_costs", "phases__treatments"
+        ),
+        pk=item_id, quote_id=pk,
+    )
+    item = duplicate_item(source)
+    messages.success(request, f"Articolo duplicato come {item.code}; materiali, lavorazioni e snapshot sono stati copiati.")
+    return redirect("quotes:items", pk=pk)
 
 
 @login_required
@@ -142,20 +192,20 @@ def item_delete(request: HttpRequest, pk: int, item_id: int) -> HttpResponse:
 @editable_quote_required
 def material_add(request: HttpRequest, pk: int, item_id: int) -> HttpResponse:
     item = get_object_or_404(QuoteItem, pk=item_id, quote_id=pk)
-    form = ItemMaterialForm(request.POST)
+    form = ItemMaterialForm(request.POST, prefix=f"material-{item.pk}")
     if form.is_valid():
         material = form.cleaned_data["material"]
         if item.materials.filter(material=material).exists():
-            messages.error(request, "Questo materiale e gia presente nell'articolo.")
+            form.add_error("material", "Questo materiale è già presente nell’articolo.")
         else:
             row = form.save(commit=False)
             row.item = item
             row.unit_cost_snapshot = material.current_cost_per_kg
             row.save()
             messages.success(request, "Materiale aggiunto con il costo corrente acquisito.")
-    else:
-        messages.error(request, "Materiale non aggiunto: verificare materiale e peso.")
-    return redirect("quotes:items", pk=pk)
+            return redirect("quotes:items", pk=pk)
+    messages.error(request, "Materiale non aggiunto: verificare materiale e peso.")
+    return render_items(request, get_quote(pk), material_form=form, status=422)
 
 
 @login_required

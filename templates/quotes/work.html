@@ -1,21 +1,22 @@
 {% extends "base.html" %}
 {% block content %}
 {% include "quotes/_steps.html" %}
-<div class="page-heading"><div><h1>3. Lavorazioni</h1><p>{{ quote.number }} — attiva solo le fasi necessarie.</p></div></div>
+<div class="page-heading section-heading"><div><span class="eyebrow">Preventivo {{ quote.number }}</span><h1>Lavorazioni</h1><p>Attiva solo le fasi necessarie e completa i dati della lavorazione.</p></div></div>
 {% if quote.status == "archived" %}<div class="alert warning"><strong>Preventivo archiviato:</strong> le lavorazioni sono disponibili in sola lettura. Duplica il preventivo dal riepilogo per modificarle.</div>{% endif %}
 {% for item_row in item_rows %}
 <section class="item-work">
-  <div class="item-banner"><h2>Articolo {{ item_row.item.code }}</h2><span>Quantita {{ item_row.item.quantity }}</span></div>
+  <div class="item-banner"><div><span class="eyebrow">Articolo</span><h2>{{ item_row.item.code }}</h2><p>{{ item_row.item.description|default:"Nessuna descrizione" }} · Quantità {{ item_row.item.quantity }}</p></div><button class="button ghost light small" type="button" data-phase-filter aria-pressed="false">Mostra solo attive</button></div>
+  <div class="phase-grid">
   {% for row in item_row.phases %}
   <details class="phase-card {% if row.phase.active %}active{% else %}inactive{% endif %}" id="fase-{{ row.phase.pk }}" {% if row.phase.active %}open{% endif %}>
     <summary class="phase-heading">
-      <div><span class="phase-number">{{ row.config.order }}</span><h3>{{ row.config.name }}</h3><span class="phase-state">{% if row.phase.active %}Attiva{% else %}Non attiva{% endif %}</span></div>
-      <strong class="phase-cost">Costo fase: EUR {{ row.phase.total_cost|floatformat:2 }}</strong>
+      <div><span class="phase-check" aria-hidden="true">{% if row.phase.active %}✓{% endif %}</span><span><span class="phase-number">{{ row.config.order|stringformat:"02d" }}</span><h3>{{ row.config.name }}</h3></span></div>
+      <span class="phase-meta"><span class="phase-state">{% if row.phase.active %}Attiva{% else %}Non attiva{% endif %}</span>{% if row.phase.active %}<strong class="phase-cost">€ {{ row.phase.total_cost|floatformat:2 }}</strong>{% endif %}</span>
     </summary>
     <div class="phase-body">
     {% if quote.status != "archived" %}
     <form method="post" action="{% url 'quotes:phase_update' quote.pk row.phase.pk %}" class="phase-control" hx-post="{% url 'quotes:phase_update' quote.pk row.phase.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
-      <div class="field yes-no"><label>Attivare questa fase?</label>{{ row.phase_form.active }}</div>
+      <fieldset class="field yes-no"><legend>Stato lavorazione</legend>{{ row.phase_form.active }}</fieldset>
       {% if row.config.code == "acquisti-esterni" %}<div class="field important-question"><label for="{{ row.phase_form.internal_answer.id_for_label }}">Si riesce a realizzare internamente?</label>{{ row.phase_form.internal_answer }}</div>{% endif %}
       <div class="field grow"><label for="{{ row.phase_form.notes.id_for_label }}">Note della fase</label>{{ row.phase_form.notes }}</div>
       <button class="button secondary" type="submit">Salva fase</button>
@@ -47,7 +48,8 @@
     </div>
   </details>
   {% endfor %}
+  </div>
 </section>
 {% empty %}<div class="alert error">Prima di configurare le lavorazioni devi inserire almeno un articolo.</div>{% endfor %}
-<div class="form-actions sticky-actions"><a class="button secondary" href="{% url 'quotes:items' quote.pk %}">Indietro</a><a class="button primary large" href="{% url 'quotes:summary' quote.pk %}">Vai al riepilogo</a></div>
+<div class="form-actions sticky-actions"><a class="button secondary" href="{% url 'quotes:items' quote.pk %}">Indietro</a><a class="button primary" href="{% url 'quotes:summary' quote.pk %}">Vai al riepilogo</a></div>
 {% endblock %}

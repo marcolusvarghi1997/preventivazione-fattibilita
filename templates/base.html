@@ -3,22 +3,30 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>{% block title %}Preventivi Carpenteria{% endblock %}</title>
-  <link rel="stylesheet" href="{% static 'css/app.css' %}">
+  <meta name="theme-color" content="#273a84">
+  <title>{% block title %}Preventivazione e fattibilità{% endblock %} | Officine Pollastri</title>
+  <link rel="icon" href="{% static 'images/officine-pollastri-logo.png' %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=4">
   <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
-  <script src="{% static 'js/app.js' %}" defer></script>
+  <script src="{% static 'js/app.js' %}?v=4" defer></script>
 </head>
 <body>
+  <a class="skip-link" href="#page-main">Vai al contenuto</a>
   <header class="topbar">
-    <a class="brand" href="{% url 'quotes:dashboard' %}">Preventivi Carpenteria</a>
-    {% if user.is_authenticated %}
-      <nav aria-label="Navigazione principale">
-        <a href="{% url 'quotes:dashboard' %}">Dashboard</a>
-        <a href="{% url 'quotes:search' %}">Cerca preventivo</a>
-        {% if user.is_staff %}<a href="/admin/">Amministrazione</a>{% endif %}
-        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="link-button" type="submit">Esci ({{ user.get_username }})</button></form>
-      </nav>
-    {% endif %}
+    <div class="topbar-inner">
+      <a class="brand" href="{% url 'quotes:dashboard' %}" aria-label="Officine Pollastri — Preventivazione e fattibilità">
+        <img src="{% static 'images/officine-pollastri-logo.png' %}" alt="Officine Pollastri" width="220" height="96">
+        <span class="brand-copy"><strong>Preventivazione</strong><small>e fattibilità</small></span>
+      </a>
+      {% if user.is_authenticated %}
+        <nav aria-label="Navigazione principale">
+          <a href="{% url 'quotes:dashboard' %}">Preventivi</a>
+          <a href="{% url 'quotes:search' %}">Ricerca</a>
+          {% if user.is_staff %}<a href="/admin/">Amministrazione</a>{% endif %}
+          <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="link-button" type="submit">Esci <span class="nav-username">({{ user.get_username }})</span></button></form>
+        </nav>
+      {% endif %}
+    </div>
   </header>
   <main id="page-main" class="container">
     {% if messages %}<div class="messages" aria-live="polite">{% for message in messages %}<div class="message {{ message.tags }}">{{ message }}</div>{% endfor %}</div>{% endif %}

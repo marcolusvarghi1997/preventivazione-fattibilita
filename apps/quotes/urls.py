@@ -11,6 +11,7 @@ urlpatterns = [
     path("preventivi/<int:pk>/articoli/", views.quote_items, name="items"),
     path("preventivi/<int:pk>/articoli/aggiungi/", views.item_add, name="item_add"),
     path("preventivi/<int:pk>/articoli/<int:item_id>/modifica/", views.item_edit, name="item_edit"),
+    path("preventivi/<int:pk>/articoli/<int:item_id>/duplica/", views.item_duplicate, name="item_duplicate"),
     path("preventivi/<int:pk>/articoli/<int:item_id>/rimuovi/", views.item_delete, name="item_delete"),
     path("preventivi/<int:pk>/articoli/<int:item_id>/materiali/aggiungi/", views.material_add, name="material_add"),
     path("preventivi/<int:pk>/materiali/<int:material_id>/rimuovi/", views.material_delete, name="material_delete"),

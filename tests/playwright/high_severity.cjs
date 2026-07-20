@@ -84,18 +84,59 @@ async function main() {
 
   await runTest("quantita non valida visibile dopo risposta HTMX 422", async (page) => {
     await page.goto(`${baseURL}/preventivi/${fixtures.main_quote}/articoli/`);
+    await page.getByRole("button", { name: "Aggiungi articolo" }).click();
     const form = page.locator('form[action$="/articoli/aggiungi/"]');
     await form.locator('input[name="code"]').fill("PW-ERR");
     await form.locator('input[name="quantity"]').fill("0");
+    await form.locator('select[name="material"]').selectOption({ index: 1 });
+    await form.locator('input[name="weight_kg"]').fill("1.500");
     await form.evaluate((element) => { element.noValidate = true; });
     const responsePromise = page.waitForResponse(
       (response) => response.url().endsWith("/articoli/aggiungi/") && response.status() === 422,
     );
-    await form.getByRole("button", { name: "Aggiungi articolo" }).click();
+    await form.getByRole("button", { name: "Salva articolo" }).click();
     await responsePromise;
-    await page.locator(".field.has-error").filter({ hasText: "Quantita" }).waitFor();
+    await page.locator(".field.has-error").filter({ hasText: "Quantità" }).waitFor();
     assert.match(await page.locator(".messages").innerText(), /Articolo non aggiunto/i);
     assert.equal(await form.locator('input[name="quantity"]').getAttribute("min"), "1");
+  });
+
+  await runTest("articolo completo, doppio clic, persistenza, duplicazione ed eliminazione", async (page) => {
+    await page.goto(`${baseURL}/preventivi/${fixtures.main_quote}/articoli/`);
+    const add = page.getByRole("button", { name: "Aggiungi articolo" });
+    await add.evaluate((button) => { button.click(); button.click(); });
+    assert.equal(await page.locator("[data-new-article]").count(), 1, "Il doppio clic deve creare una sola bozza.");
+
+    const form = page.locator("[data-new-article] form");
+    await form.locator('input[name="code"]').fill("PW-COMPLETO");
+    await form.locator('input[name="quantity"]').fill("3");
+    await form.locator('input[name="description"]').fill("Descrizione tecnica molto lunga per verificare il comportamento responsive senza troncamenti");
+    await form.locator('select[name="material"]').selectOption({ index: 1 });
+    await form.locator('input[name="weight_kg"]').fill("2.750");
+    await form.getByRole("button", { name: "Salva articolo" }).click();
+    await page.getByText(/PW-COMPLETO aggiunto/i).waitFor();
+    assert.equal(await page.getByText("PW-COMPLETO", { exact: true }).count(), 1);
+
+    await page.reload();
+    const article = page.locator("details[data-article-card]").filter({ hasText: "PW-COMPLETO" });
+    await article.locator(":scope > summary").click();
+    assert.equal(await article.locator('input[name$="-quantity"]').inputValue(), "3");
+    assert.match(await article.innerText(), /2,750 kg/);
+
+    page.once("dialog", (dialog) => dialog.accept());
+    await article.getByRole("button", { name: "Duplica" }).click();
+    await page.getByText("PW-COMPLETO-COPIA", { exact: true }).waitFor();
+    const copy = page.locator("details[data-article-card]").filter({ hasText: "PW-COMPLETO-COPIA" });
+    await copy.locator(":scope > summary").click();
+    page.once("dialog", (dialog) => dialog.accept());
+    await copy.getByRole("button", { name: "Elimina articolo" }).click();
+    await page.getByText(/PW-COMPLETO-COPIA rimosso/i).waitFor();
+    assert.equal(await page.getByText("PW-COMPLETO-COPIA", { exact: true }).count(), 0);
+
+    await article.locator(":scope > summary").click();
+    page.once("dialog", (dialog) => dialog.accept());
+    await article.getByRole("button", { name: "Elimina articolo" }).click();
+    await page.getByText(/PW-COMPLETO rimosso/i).waitFor();
   });
 
   await runTest("operatori zero produce un messaggio comprensibile", async (page) => {
@@ -158,6 +199,40 @@ async function main() {
     await page.goto(`${baseURL}/preventivi/${fixtures.zero_cost_quote}/riepilogo/`);
     assert.match(await page.locator(".alert.error").innerText(), /costo orario/i);
     assert.equal(await page.getByRole("button", { name: "Segna come completato" }).isDisabled(), true);
+  });
+
+  await runTest("selezione e deselezione di una lavorazione", async (page) => {
+    await page.goto(`${baseURL}/preventivi/${fixtures.main_quote}/lavorazioni/`);
+    const inactive = page.locator("details.phase-card.inactive").first();
+    const phaseId = await inactive.getAttribute("id");
+    await inactive.locator(":scope > summary").click();
+    await inactive.getByLabel("Sì, attiva").check();
+    await inactive.getByRole("button", { name: "Salva fase" }).click();
+    const active = page.locator(`#${phaseId}.phase-card.active`);
+    await active.waitFor();
+    assert.equal(await active.getByLabel("Sì, attiva").isChecked(), true);
+
+    await active.getByLabel("No, non attiva").check();
+    await active.getByRole("button", { name: "Salva fase" }).click();
+    const restored = page.locator(`#${phaseId}.phase-card.inactive`);
+    await restored.waitFor();
+    assert.equal(await restored.getAttribute("open"), null);
+  });
+
+  await runTest("navigazione da tastiera, focus visibile e label collegate", async (page) => {
+    await page.goto(`${baseURL}/preventivi/${fixtures.main_quote}/articoli/`);
+    for (let index = 0; index < 6; index += 1) await page.keyboard.press("Tab");
+    const focus = await page.evaluate(() => {
+      const active = document.activeElement;
+      const style = getComputedStyle(active);
+      const missingLabels = Array.from(document.querySelectorAll("input:not([type=hidden]), select, textarea"))
+        .filter((control) => control.offsetParent !== null && !control.labels?.length)
+        .map((control) => control.name);
+      return { tag: active.tagName, outline: style.outlineStyle, missingLabels };
+    });
+    assert.notEqual(focus.tag, "BODY");
+    assert.notEqual(focus.outline, "none");
+    assert.deepEqual(focus.missingLabels, []);
   });
 
   await runTest("fasi inattive compatte e apribili anche su schermo piccolo", async (page) => {

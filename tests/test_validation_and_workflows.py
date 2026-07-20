@@ -8,7 +8,7 @@ from django.urls import reverse
 from apps.catalog.models import Material, PhaseDefinition, ProductionResource
 from apps.quotes.forms import TreatmentForm
 from apps.quotes.models import DirectCost, ExternalTreatment, ItemMaterial, ItemPhase, Quote, QuoteItem, TimeOperation
-from apps.quotes.services.quotes import duplicate_quote
+from apps.quotes.services.quotes import duplicate_item, duplicate_quote
 from apps.quotes.services.validation import validate_quote
 
 
@@ -139,3 +139,23 @@ class DuplicationTests(TestCase):
         self.assertEqual(copied_op.hourly_cost_snapshot, Decimal("44"))
         self.assertEqual(copied_op.resource_name_snapshot, "Nome storico")
         self.assertEqual(duplicate.items.get().materials.get().unit_cost_snapshot, Decimal("2"))
+
+    def test_duplicate_item_keeps_material_and_operation_snapshots(self):
+        quote = Quote.objects.create(author=self.author)
+        item = QuoteItem.objects.create(quote=quote, code="PEZZO", quantity=2)
+        ItemMaterial.objects.create(item=item, material=self.material, weight_kg=Decimal("1.5"), unit_cost_snapshot=Decimal("2"))
+        phase_def = PhaseDefinition.objects.get(code="saldatura")
+        phase = ItemPhase.objects.create(item=item, definition=phase_def, active=True)
+        resource = ProductionResource.objects.filter(phase=phase_def).first()
+        TimeOperation.objects.create(
+            phase=phase, resource=resource, working_minutes=Decimal("10"), setup_minutes=Decimal("2"),
+            operators_snapshot=1, resource_name_snapshot="Risorsa storica", hourly_cost_snapshot=Decimal("37"),
+        )
+
+        copied = duplicate_item(item)
+
+        self.assertEqual(copied.code, "PEZZO-COPIA")
+        self.assertEqual(copied.materials.get().unit_cost_snapshot, Decimal("2"))
+        copied_operation = copied.phases.get().operations.get()
+        self.assertEqual(copied_operation.resource_name_snapshot, "Risorsa storica")
+        self.assertEqual(copied_operation.hourly_cost_snapshot, Decimal("37"))
