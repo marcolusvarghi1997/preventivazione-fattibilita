@@ -12,6 +12,8 @@ __pycache__/
 db.sqlite3
 staticfiles/
 media/
+backups/*.sqlite3
+dati/
 
 # Variabili e segreti
 .env

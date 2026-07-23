@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block title %}Errore dell'applicazione{% endblock %}
+{% block content %}<section class="card narrow"><span class="eyebrow">Errore 500</span><h1>Qualcosa non ha funzionato</h1><p>Riprova tra qualche istante. Se il problema continua, contatta l’amministratore.</p><a class="button primary" href="{% url 'quotes:dashboard' %}">Torna ai preventivi</a></section>{% endblock %}

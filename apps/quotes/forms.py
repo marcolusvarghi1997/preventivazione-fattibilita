@@ -1,7 +1,47 @@
+from decimal import Decimal, InvalidOperation
+
 from django import forms
 from django.core.exceptions import ValidationError
-from apps.catalog.models import Client, Material, ProductionResource
+from apps.catalog.models import Client, ClientContact, Material, ProductionResource
+from .formatting import format_decimal_it, normalize_decimal_input
 from .models import DirectCost, ExternalTreatment, Feasibility, ItemMaterial, ItemPhase, Quote, QuoteItem, TimeOperation
+
+
+class ItalianDecimalInput(forms.TextInput):
+    def __init__(self, attrs=None, places=2):
+        self.places = places
+        defaults = {
+            "inputmode": "decimal",
+            "data-decimal-input": "",
+            "data-decimal-places": str(places),
+            "pattern": rf"[0-9]+([,.][0-9]{{1,{places}}})?",
+        }
+        defaults.update(attrs or {})
+        super().__init__(defaults)
+
+    def format_value(self, value):
+        if value in (None, ""):
+            return ""
+        if isinstance(value, Decimal):
+            return format_decimal_it(value, self.places)
+        return value
+
+
+class ItalianDecimalField(forms.DecimalField):
+    default_error_messages = {**forms.DecimalField.default_error_messages, "invalid": "Inserire un numero valido."}
+
+    def __init__(self, *args, display_places=None, **kwargs):
+        places = display_places if display_places is not None else kwargs.get("decimal_places", 2)
+        kwargs.setdefault("widget", ItalianDecimalInput(places=places))
+        super().__init__(*args, **kwargs)
+
+    def to_python(self, value):
+        if value in self.empty_values:
+            return None
+        try:
+            return super().to_python(normalize_decimal_input(value))
+        except (InvalidOperation, TypeError, ValueError):
+            raise ValidationError(self.error_messages["invalid"], code="invalid")
 
 
 class DateInput(forms.DateInput):
@@ -12,36 +52,144 @@ class DateInput(forms.DateInput):
 
 
 class QuoteGeneralForm(forms.ModelForm):
+    client_lookup = forms.CharField(
+        label="Cliente",
+        required=False,
+        widget=forms.TextInput(attrs={
+            "autocomplete": "off",
+            "data-client-search": "",
+            "placeholder": "Inizia a scrivere la ragione sociale",
+            "role": "combobox",
+            "aria-autocomplete": "list",
+            "aria-controls": "client-results",
+            "aria-expanded": "false",
+        }),
+    )
+    contact_id = forms.IntegerField(required=False, widget=forms.HiddenInput(attrs={"data-contact-id": ""}))
+
     class Meta:
         model = Quote
-        fields = ("date", "client", "client_contact", "internal_notes", "customer_notes")
-        widgets = {"date": DateInput(), "internal_notes": forms.Textarea(attrs={"rows": 3}), "customer_notes": forms.Textarea(attrs={"rows": 3})}
+        fields = ("date", "client", "client_contact", "client_email", "internal_notes", "customer_notes")
+        widgets = {
+            "date": DateInput(),
+            "client": forms.HiddenInput(attrs={"data-client-id": ""}),
+            "client_contact": forms.TextInput(attrs={"data-contact-name": ""}),
+            "client_email": forms.EmailInput(attrs={"data-contact-email": ""}),
+            "internal_notes": forms.Textarea(attrs={"rows": 3}),
+            "customer_notes": forms.Textarea(attrs={"rows": 3}),
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["client"].queryset = Client.objects.filter(active=True)
         self.fields["date"].input_formats = ["%Y-%m-%d"]
+        self.fields["client_contact"].required = False
+        self.fields["client_email"].required = False
+        if self.instance and self.instance.client_id:
+            self.fields["client_lookup"].initial = self.instance.client.name
+        self.order_fields((
+            "date", "client_lookup", "client", "contact_id", "client_contact", "client_email",
+            "internal_notes", "customer_notes",
+        ))
+
+    def clean(self):
+        cleaned = super().clean()
+        client = cleaned.get("client")
+        lookup = (cleaned.get("client_lookup") or "").strip()
+        if lookup and not client:
+            client = Client.objects.filter(active=True, name__iexact=lookup).first()
+            if client:
+                cleaned["client"] = client
+            else:
+                self.add_error("client_lookup", "Seleziona un cliente suggerito oppure registrane uno con il pulsante rapido.")
+        if client and lookup and client.name.casefold() != lookup.casefold():
+            self.add_error("client_lookup", "Il cliente scritto non corrisponde a quello selezionato.")
+        contact_id = cleaned.get("contact_id")
+        if contact_id:
+            contact = ClientContact.objects.filter(pk=contact_id, client=client, active=True).first()
+            if not contact:
+                self.add_error("client_contact", "Il referente selezionato non appartiene al cliente indicato.")
+            else:
+                cleaned["client_contact"] = cleaned.get("client_contact") or contact.name
+                cleaned["client_email"] = cleaned.get("client_email") or contact.email
+        return cleaned
 
 
 class QuoteSummaryForm(forms.ModelForm):
+    offered_price = ItalianDecimalField(
+        label="Prezzo commerciale offerto",
+        required=False,
+        min_value=Decimal("0"),
+        max_digits=14,
+        decimal_places=2,
+        widget=ItalianDecimalInput(attrs={"min": "0"}, places=2),
+    )
+
     class Meta:
         model = Quote
-        fields = ("feasibility", "offered_price")
+        fields = ("feasibility", "offered_price", "customer_decision")
         labels = {"feasibility": "Fattibilità"}
-        widgets = {"offered_price": forms.NumberInput(attrs={"min": "0", "step": "0.01"})}
+        widgets = {"feasibility": forms.RadioSelect()}
+
+    def save(self, commit=True):
+        quote = super().save(commit=False)
+        if quote.customer_decision == Quote.CustomerDecision.ACCEPTED:
+            quote.status = Quote.Status.COMPLETED
+        elif quote.customer_decision == Quote.CustomerDecision.REJECTED:
+            quote.status = Quote.Status.REJECTED
+        elif quote.status == Quote.Status.REJECTED:
+            quote.status = Quote.Status.DRAFT
+        if commit:
+            quote.save()
+        return quote
 
 
 class QuoteItemForm(forms.ModelForm):
+    external_purchases_cost = ItalianDecimalField(
+        label="Costo acquisti esterni", required=False, min_value=Decimal("0"), max_digits=14, decimal_places=2,
+        widget=ItalianDecimalInput(attrs={"min": "0", "data-extra-cost": "external_purchases_cost"}, places=2),
+    )
+    external_work_cost = ItalianDecimalField(
+        label="Costo lavorazioni esterne", required=False, min_value=Decimal("0"), max_digits=14, decimal_places=2,
+        widget=ItalianDecimalInput(attrs={"min": "0", "data-extra-cost": "external_work_cost"}, places=2),
+    )
+    bureaucracy_cost = ItalianDecimalField(
+        label="Costo certificati e burocrazia", required=False, min_value=Decimal("0"), max_digits=14, decimal_places=2,
+        widget=ItalianDecimalInput(attrs={"min": "0", "data-extra-cost": "bureaucracy_cost"}, places=2),
+    )
+
     class Meta:
         model = QuoteItem
-        fields = ("code", "quantity", "description", "revision", "dimensions", "technical_notes", "feasibility")
+        fields = (
+            "code", "quantity", "description", "revision", "dimensions", "technical_notes", "feasibility",
+            "external_purchases", "external_purchases_cost", "external_work", "external_work_cost",
+            "bureaucracy", "bureaucracy_cost",
+        )
         labels = {"quantity": "Quantità", "feasibility": "Fattibilità articolo"}
-        widgets = {"technical_notes": forms.Textarea(attrs={"rows": 3}), "quantity": forms.NumberInput(attrs={"min": 1})}
+        widgets = {
+            "technical_notes": forms.Textarea(attrs={"rows": 3}),
+            "quantity": forms.NumberInput(attrs={"min": 1}),
+            "feasibility": forms.RadioSelect(),
+            "external_purchases": forms.CheckboxInput(attrs={"data-extra-toggle": "external_purchases_cost"}),
+            "external_work": forms.CheckboxInput(attrs={"data-extra-toggle": "external_work_cost"}),
+            "bureaucracy": forms.CheckboxInput(attrs={"data-extra-toggle": "bureaucracy_cost"}),
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["quantity"].min_value = 1
         self.fields["quantity"].widget.attrs["min"] = "1"
+
+    def clean(self):
+        cleaned = super().clean()
+        for toggle, cost in (
+            ("external_purchases", "external_purchases_cost"),
+            ("external_work", "external_work_cost"),
+            ("bureaucracy", "bureaucracy_cost"),
+        ):
+            if not cleaned.get(toggle):
+                cleaned[cost] = getattr(self.instance, cost, None) if self.instance.pk else cleaned.get(cost)
+        return cleaned
 
     def save(self, commit=True):
         item = super().save(commit=False)
@@ -52,35 +200,66 @@ class QuoteItemForm(forms.ModelForm):
 
 
 class ItemMaterialForm(forms.ModelForm):
+    weight_kg = ItalianDecimalField(
+        label="Peso (kg) per pezzo", min_value=Decimal("0.001"), max_digits=12, decimal_places=3,
+        widget=ItalianDecimalInput(attrs={"min": "0.001"}, places=3),
+    )
+    unit_cost_snapshot = ItalianDecimalField(
+        label="Costo acquisto/kg", required=False, min_value=Decimal("0"), max_digits=12, decimal_places=4,
+        display_places=2, widget=ItalianDecimalInput(attrs={"min": "0", "data-material-cost": ""}, places=2),
+    )
+
     class Meta:
         model = ItemMaterial
-        fields = ("material", "weight_kg")
-        widgets = {"weight_kg": forms.NumberInput(attrs={"min": "0.001", "step": "0.001"})}
+        fields = ("material", "weight_kg", "unit_cost_snapshot")
+        labels = {"unit_cost_snapshot": "Costo acquisto/kg"}
+        widgets = {
+            "material": forms.Select(attrs={"data-material-select": ""}),
+        }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["material"].queryset = Material.objects.filter(active=True)
+        self.fields["unit_cost_snapshot"].required = False
+
+
+class ItemMaterialEditForm(forms.ModelForm):
+    weight_kg = ItalianDecimalField(
+        label="Peso (kg) per pezzo", min_value=Decimal("0.001"), max_digits=12, decimal_places=3,
+        widget=ItalianDecimalInput(attrs={"min": "0.001"}, places=3),
+    )
+    unit_cost_snapshot = ItalianDecimalField(
+        label="Costo acquisto/kg", required=False, min_value=Decimal("0"), max_digits=12, decimal_places=4,
+        display_places=2, widget=ItalianDecimalInput(attrs={"min": "0"}, places=2),
+    )
+
+    class Meta:
+        model = ItemMaterial
+        fields = ("weight_kg", "unit_cost_snapshot")
+        labels = {"unit_cost_snapshot": "Costo acquisto/kg"}
 
 
 class PhaseForm(forms.ModelForm):
     class Meta:
         model = ItemPhase
-        fields = ("active", "notes", "internal_answer")
-        widgets = {"active": forms.RadioSelect(choices=((True, "Sì, attiva"), (False, "No, non attiva"))), "notes": forms.Textarea(attrs={"rows": 2})}
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        if self.instance and self.instance.definition_id and self.instance.definition.code != "acquisti-esterni":
-            self.fields.pop("internal_answer")
+        fields = ("active",)
+        widgets = {"active": forms.CheckboxInput(attrs={"data-phase-toggle": "", "aria-label": "Sì, attiva"})}
 
 
 class TimeOperationForm(forms.ModelForm):
+    working_minutes = ItalianDecimalField(
+        label="Minuti lavorazione", min_value=Decimal("0"), max_digits=10, decimal_places=2,
+        widget=ItalianDecimalInput(attrs={"min": "0"}, places=2),
+    )
+    setup_minutes = ItalianDecimalField(
+        label="Minuti attrezzaggio", min_value=Decimal("0"), max_digits=10, decimal_places=2,
+        widget=ItalianDecimalInput(attrs={"min": "0"}, places=2),
+    )
+
     class Meta:
         model = TimeOperation
         fields = ("resource", "working_minutes", "setup_minutes", "operators_snapshot", "time_basis", "notes")
         widgets = {
-            "working_minutes": forms.NumberInput(attrs={"min": 0, "step": "0.01"}),
-            "setup_minutes": forms.NumberInput(attrs={"min": 0, "step": "0.01"}),
             "operators_snapshot": forms.NumberInput(attrs={"min": 1}),
             "notes": forms.Textarea(attrs={"rows": 2}),
         }
@@ -108,17 +287,38 @@ class TimeOperationForm(forms.ModelForm):
 
 
 class DirectCostForm(forms.ModelForm):
+    amount = ItalianDecimalField(
+        label="Importo", min_value=Decimal("0"), max_digits=14, decimal_places=2,
+        widget=ItalianDecimalInput(attrs={"min": "0"}, places=2),
+    )
+
     class Meta:
         model = DirectCost
         fields = ("description", "supplier", "amount", "notes")
-        widgets = {"amount": forms.NumberInput(attrs={"min": 0, "step": "0.01"}), "notes": forms.Textarea(attrs={"rows": 2})}
+        widgets = {"notes": forms.Textarea(attrs={"rows": 2})}
+
+    def __init__(self, *args, phase=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["amount"].required = False
+        self.fields["amount"].label = "Importo opzionale"
+        if phase and phase.definition.code == "lavorazioni-extra":
+            self.fields.pop("supplier")
+            self.fields["description"].label = "Lavorazione interna extra"
+
+    def clean_amount(self):
+        return self.cleaned_data.get("amount") or Decimal("0")
 
 
 class TreatmentForm(forms.ModelForm):
+    cost = ItalianDecimalField(
+        label="Costo", min_value=Decimal("0"), max_digits=14, decimal_places=2,
+        widget=ItalianDecimalInput(attrs={"min": "0"}, places=2),
+    )
+
     class Meta:
         model = ExternalTreatment
         fields = ("treatment_type", "description", "supplier", "cost", "notes")
-        widgets = {"cost": forms.NumberInput(attrs={"min": 0, "step": "0.01"}), "notes": forms.Textarea(attrs={"rows": 2})}
+        widgets = {"notes": forms.Textarea(attrs={"rows": 2})}
 
     def clean(self):
         cleaned = super().clean()
@@ -129,7 +329,34 @@ class TreatmentForm(forms.ModelForm):
 
 class QuoteSearchForm(forms.Form):
     q = forms.CharField(label="Numero, codice, cliente o descrizione", required=False)
-    status = forms.ChoiceField(label="Stato", required=False, choices=(("", "Tutti"), *Quote.Status.choices))
+    status = forms.ChoiceField(label="Stato", required=False, choices=(
+        ("", "Tutti"),
+        (Quote.Status.DRAFT, "Bozza"),
+        (Quote.Status.COMPLETED, "Completato"),
+        (Quote.Status.REJECTED, "Rifiutato"),
+    ))
     feasibility = forms.ChoiceField(label="Fattibilità", required=False, choices=(("", "Tutte"), *Feasibility.choices))
     date_from = forms.DateField(label="Dal", required=False, widget=DateInput())
     date_to = forms.DateField(label="Al", required=False, widget=DateInput())
+
+
+class QuickClientForm(forms.ModelForm):
+    contact_name = forms.CharField(label="Primo referente", max_length=150, required=False)
+    contact_email = forms.EmailField(label="Email referente", required=False)
+    contact_phone = forms.CharField(label="Telefono referente", max_length=50, required=False)
+
+    class Meta:
+        model = Client
+        fields = ("name", "email", "phone", "address")
+        widgets = {"address": forms.Textarea(attrs={"rows": 2})}
+
+    def save(self, commit=True):
+        client = super().save(commit=commit)
+        if commit and self.cleaned_data.get("contact_name"):
+            ClientContact.objects.create(
+                client=client,
+                name=self.cleaned_data["contact_name"],
+                email=self.cleaned_data.get("contact_email", ""),
+                phone=self.cleaned_data.get("contact_phone", ""),
+            )
+        return client

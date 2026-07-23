@@ -15,7 +15,7 @@ django.setup()
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 
-from apps.catalog.models import Client, Material, PhaseDefinition, ProductionResource
+from apps.catalog.models import Client, ClientContact, Material, PhaseDefinition, ProductionResource
 from apps.quotes.models import ItemMaterial, Quote, QuoteItem, TimeOperation
 from apps.quotes.services.quotes import initialize_item_phases
 
@@ -61,7 +61,10 @@ def add_operation(item, phase_code, hourly_cost):
 def main(output_path):
     user = get_user_model().objects.create_user("playwright", password=PASSWORD)
     user.groups.add(Group.objects.get(name="Commerciale"))
-    client = Client.objects.create(name="Cliente Playwright")
+    admin_user = get_user_model().objects.create_superuser("playwright-admin", password=PASSWORD)
+    client = Client.objects.create(name="Cliente Playwright", email="amministrazione@playwright.example", phone="02 123456")
+    contact = ClientContact.objects.create(client=client, name="Referente Unico", email="referente@playwright.example")
+    Client.objects.create(name="Altro Cliente", email="altro@example.com", phone="011 987654")
     material = Material.objects.create(
         name="Acciaio Playwright",
         current_cost_per_kg=Decimal("2.5000"),
@@ -91,6 +94,10 @@ def main(output_path):
         "main_operation": main_operation.pk,
         "archived_quote": archived_quote.pk,
         "zero_cost_quote": zero_cost_quote.pk,
+        "client_name": client.name,
+        "contact_name": contact.name,
+        "contact_email": contact.email,
+        "admin_username": admin_user.username,
     }
     with open(output_path, "w", encoding="utf-8") as output:
         json.dump(data, output)

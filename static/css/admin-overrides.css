@@ -1,0 +1,52 @@
+/* Override circoscritti alla struttura Jazzmin/AdminLTE. */
+body.dashboard .content-wrapper .card-body > table.table {
+  margin-bottom: 0;
+}
+
+body.dashboard .content-wrapper .card-body > table.table th,
+body.dashboard .content-wrapper .card-body > table.table td {
+  padding: .68rem .75rem;
+  border-top: 0;
+  border-bottom: 1px solid #dee2e6;
+  vertical-align: middle;
+}
+
+body.dashboard .content-wrapper .card-body > table.table tr:last-child > * {
+  border-bottom: 0;
+}
+
+body.dashboard .content-wrapper .btn-group.float-end {
+  display: inline-flex;
+  align-items: center;
+  gap: .25rem;
+}
+
+body.change-list #result_list th,
+body.change-list #result_list td {
+  vertical-align: middle;
+}
+
+body.change-list #result_list tbody tr:hover {
+  background: #eef7f7;
+}
+
+body.change-list .object-tools .btn,
+body.change-form .submit-row .btn,
+body.change-form .d-flex.flex-wrap.gap-2 > .btn {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.admin-status {
+  font-weight: 700;
+}
+
+.admin-status--ok {
+  color: #0f7468;
+}
+
+.admin-status--warning {
+  color: #8a6200;
+}

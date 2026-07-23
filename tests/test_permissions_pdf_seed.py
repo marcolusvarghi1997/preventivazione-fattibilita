@@ -27,10 +27,13 @@ class PermissionTests(TestCase):
         self.assertEqual(self.client.get(reverse("quotes:dashboard")).status_code, 200)
         self.assertEqual(self.client.get("/admin/").status_code, 302)
 
-    def test_administrator_permissions(self):
+    def test_only_superuser_can_access_admin(self):
         self.assertTrue(self.admin_user.has_perm("catalog.change_material"))
         self.assertTrue(self.admin_user.has_perm("auth.change_user"))
         self.client.force_login(self.admin_user)
+        self.assertEqual(self.client.get("/admin/").status_code, 302)
+        superuser = get_user_model().objects.create_superuser("superadmin", password="pass")
+        self.client.force_login(superuser)
         self.assertEqual(self.client.get("/admin/").status_code, 200)
 
     def test_commercial_wizard_pages_render(self):
@@ -92,8 +95,8 @@ class SequenceAndSeedTests(TestCase):
     def test_progressive_quote_number(self):
         first = Quote.objects.create(author=self.user)
         second = Quote.objects.create(author=self.user)
-        self.assertRegex(first.number, r"^PREV-\d{4}-0001$")
-        self.assertTrue(second.number.endswith("-0002"))
+        self.assertRegex(first.number, r"^PR-\d{4}-00001$")
+        self.assertTrue(second.number.endswith("-00002"))
         self.assertEqual(QuoteSequence.objects.count(), 1)
 
     def test_seed_is_idempotent(self):

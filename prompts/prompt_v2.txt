@@ -1,0 +1,66 @@
+Usare jazzmin con interfaccia moderna per l'admin page
+Rendere l'admin page accessibile solo al super user, mentre gli user normali possono solo accedere all'app e ai preventivi che fanno loro, per cui hanno accesso a tutte le info tranne ai preventivi altrui
+Gli utenti perciò fanno l'accesso e hanno accesso solo ai loro preventivi, mentre le altre cose che riguardano l'azienda sono ok
+
+L'header della pagina ha bisogno di un pelo piu padding per farci stare il logo, oppure riduci di poco il logo in altezza e aumenta padding perfchè ora è agganciato ai bordi
+
+Nella pagina principale la griglia che fa vedere i preventivi è da allineare verticalmente al centro, e anche gli elementi che la compongono richiedono di essere allineati verticalmente al centro
+
+La barra di navigazione per i vari step della compilazione del preventivo va allineata verticalmente per elementi, perché al momento non sono allineati
+Anche centralmente, per elemento
+
+Gli id dei preventivi devono avere la l'id che fa PR-<anno>-XXXXX per cui 5 numeri dopo
+Lo stato deve essere di 3 colori, giallo per non completato/bozza, verde per completato, rosso per rifiutato
+Va perciò aggiunto un flag da poter aggioranre per i preventivi per dire se è stato accettato o meno modificandolo
+Aggiungi la possibilità di eliminare un preventivo e non archiviarlo e basta, ma solamente da super user
+Un user normale non può cancellare un preventivo
+
+La barra dei filtri in http://127.0.0.1:8765/preventivi/cerca/ va messa tutta in line, o comunque fatta mehglio graficamente, occupa troppo spazio al momento
+
+La pagina http://127.0.0.1:8765/preventivi/ deve rimandare all'attuale homepage, per cui non dare errore
+
+La favicon è da aggiornare prendendola dal sito officinepollastri.it per cui va sostituita quella attuale
+
+La gestione del database deve tenere conto di centinaia righe per cui una roba leggera. Se si può conservare il sql lite per me si può tenere ma lascio a te questa decisione
+Il programma comunque deve essere sempre portable 
+
+
+Partendo da http://127.0.0.1:8765/preventivi/nuovo/
+Il campo cliente deve poter essere scelto dall'elenco o si può scrivere il campo nuovo. Vorrei che mentre scrive ci sia un suggerimnento per far vedere rapidamente se il cliente è gia registrato in modo da poterlo selezionare rapidamente.
+Se non è registrato voglio che si possa registrare tramite popup rapido con tutti i suoi campi
+Il campo referente cliente deve compilarsi in automatico nel momento in cui io seleziono un referente già registrato. In ogni caso è possibile sostituirlo se non è quello giusto. Idem la mail, sempre in compilazione automatica ma che possa essere modificata se non voglio avere quella mail li poi alla fine.
+Il cliente X può comunque avere più referenti
+Ogni referente ha una mail sua, ma possono esistere due campi con lo stesso nome di referente e mail diverse
+
+Su questa pagina http://127.0.0.1:8765/preventivi/12/articoli/, per cui modifica/aggiunta degli articoli in preventivo
+Quando aggiungo un materiale, mi compaiono i dati relativi al materiale e il costo calcolato
+Il campo Costo acquisito / kg va tradotto in Costo Acquisto/kg. Il campo inoltre deve essere compilato in automatico ma devo poterlo modificare specificatamente per il preventivo che sto compilando, perciò per quello specifico materiale in quello specifico preventivo, senza modificare il dato salvato nel database
+Il pulsante salva dati articolo leggermente piu visibile
+Il campo fattibilità articolo deve essere come selettore dot per cui esclusivo, rimuovi la voce "Fattibile con lavorazioni o acquisti esterni" e aggiungi due campi checkbox affianco con "Acquisti esterni" e "Lavorazioni esterne"
+Se selezionati, deve comparire un campo compilabile opzionale per inserire il costo per questi due che andranno sommati ai costi vivi del preventivo
+Serve inoltre un altra checkbox che fa comparire un campo per una voce che scegli tu tipo "Burocrazia" per quando dobbiamo richiedere un certificato o comunque documentazione
+
+La pagina http://127.0.0.1:8765/preventivi/12/lavorazioni/ per la modifica delle fasi è da sistemare proprio concettualmente
+Lo stato lavorazione non deve avere il selettore dot, ma mi basta il selettore checkbox in testa per attivarla o disattivarla. Questa cosa crea una dualità che non voglio
+Puoi togliere anche la parte "Nota della fase" dato che poi per ogni "tempo di lavorazione" c'è il campo note
+Per cui il salvataggio della fase viene fatto subito mentre modifico piano piano, non deve esserci un tasto salva ma si salva sempre tutto in automatico
+Al momento l'aggiunta di tempi di lavorazione non funziona, se lo aggiungo poi non rimane salvato
+La tabella che mostra i vari tempi di lavorazione va allineata verticalmente al centro
+Al momento se lascio i parametri standard che sono 0 e 0 non salva il tempo di lavorazione, per cui devi mettere un check a form che mi impedisce di salvare il tempo di lavorazione su un tempo non valido
+
+Per quel che riguarda il laser al momento è una scelta esclusiva ma voglio poter fare come nelle macchine utensili per cui poter scegliere anche più lavorazioni di laser
+
+Per le lavorazioni extra, non si parla di fornitore esterno ma è una lavorazione extra da aggiungere internamente, con campo importo opzionale per l'aggiunta del costo. Il resto lascialo
+
+
+La lavorazione "Acquisti esterni" non ha senso che abbia la domanda "Si riesce a realizzare internamente?" perché se lo seleziono è sicuramente no
+
+Nella fase di riepilogo non voglio il margine percentuale ma il guadagno in termini percentuali
+
+In ogni caso in tutto il sito, gli elementi vanno allineati gli elementi singoli verticalmente in mezzo
+
+
+Infine, predisponi per il futuro che tutto il programma sia possibile passarlo come eseguibile python compilato e non decompilabile, per cui pronto per la distribuzione
+Lascia uno spazio per poter modificare titolo dell'azienda, così come logo (che viene visualizzato nell'header), la favicon, i colori, e comunque tutto queloo che al momento rimanda a Officine Pollastri
+Dal pannello di superadmin inoltre devo poter attivare e disattivare la lan a piacere, per cui che altri dispositivi alla mia stessa rete possano usare se io faccio da server
+Considera che non devo poter usare gli script per cui fai un interfaccia intuitiva per la gestioen di questa cosa e tutto quello che ne concerne

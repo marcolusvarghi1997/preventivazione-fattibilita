@@ -15,7 +15,6 @@ ZERO = Decimal("0")
 class Feasibility(models.TextChoices):
     TO_CHECK = "to_check", "Da verificare"
     INTERNAL = "internal", "Fattibile internamente"
-    EXTERNAL = "external", "Fattibile con lavorazioni o acquisti esterni"
     NOT_FEASIBLE = "not_feasible", "Non fattibile"
 
 
@@ -32,7 +31,7 @@ def next_quote_number() -> str:
                 sequence, _ = QuoteSequence.objects.get_or_create(year=year)
                 QuoteSequence.objects.filter(pk=sequence.pk).update(last_number=F("last_number") + 1)
                 sequence.refresh_from_db(fields=["last_number"])
-                return f"PREV-{year}-{sequence.last_number:04d}"
+                return f"PR-{year}-{sequence.last_number:05d}"
         except (IntegrityError, OperationalError):
             continue
     raise RuntimeError("Impossibile generare il numero preventivo. Riprovare.")
@@ -43,18 +42,32 @@ class Quote(models.Model):
         DRAFT = "draft", "Bozza"
         IN_PROGRESS = "in_progress", "In lavorazione"
         COMPLETED = "completed", "Completato"
+        REJECTED = "rejected", "Rifiutato"
         SENT = "sent", "Inviato"
         ARCHIVED = "archived", "Archiviato"
+
+    class CustomerDecision(models.TextChoices):
+        PENDING = "pending", "Da definire"
+        ACCEPTED = "accepted", "Accettato"
+        REJECTED = "rejected", "Rifiutato"
 
     number = models.CharField("Numero", max_length=30, unique=True, blank=True, db_index=True)
     date = models.DateField("Data", default=timezone.localdate, db_index=True)
     status = models.CharField("Stato", max_length=20, choices=Status.choices, default=Status.DRAFT, db_index=True)
     client = models.ForeignKey(Client, on_delete=models.PROTECT, null=True, blank=True, related_name="quotes", verbose_name="Cliente")
     client_contact = models.CharField("Referente cliente", max_length=150, blank=True)
+    client_email = models.EmailField("Email referente", blank=True)
     internal_notes = models.TextField("Note interne", blank=True)
     customer_notes = models.TextField("Note visibili al cliente", blank=True)
     feasibility = models.CharField("Fattibilita", max_length=20, choices=Feasibility.choices, default=Feasibility.TO_CHECK, db_index=True)
     offered_price = models.DecimalField("Prezzo commerciale offerto", max_digits=14, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(ZERO)])
+    customer_decision = models.CharField(
+        "Esito cliente",
+        max_length=20,
+        choices=CustomerDecision.choices,
+        default=CustomerDecision.PENDING,
+        db_index=True,
+    )
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="quotes", verbose_name="Autore")
     created_at = models.DateTimeField("Creato il", auto_now_add=True)
     updated_at = models.DateTimeField("Modificato il", auto_now=True)
@@ -88,6 +101,29 @@ class Quote(models.Model):
             return None
         return (self.offered_price - self.industrial_cost) / self.offered_price * Decimal("100")
 
+    @property
+    def profit_percent(self) -> Decimal | None:
+        """Guadagno percentuale calcolato sul costo industriale (markup)."""
+        if self.offered_price is None or self.industrial_cost <= 0:
+            return None
+        return (self.offered_price - self.industrial_cost) / self.industrial_cost * Decimal("100")
+
+    @property
+    def display_status(self) -> str:
+        if self.status == self.Status.REJECTED or self.customer_decision == self.CustomerDecision.REJECTED:
+            return "Rifiutato"
+        if self.status == self.Status.COMPLETED or self.customer_decision == self.CustomerDecision.ACCEPTED:
+            return "Completato"
+        return "Bozza"
+
+    @property
+    def status_css_class(self) -> str:
+        if self.display_status == "Rifiutato":
+            return "rejected"
+        if self.display_status == "Completato":
+            return "completed"
+        return "draft"
+
     def __str__(self) -> str:
         return self.number
 
@@ -101,6 +137,21 @@ class QuoteItem(models.Model):
     dimensions = models.CharField("Dimensioni", max_length=150, blank=True)
     technical_notes = models.TextField("Note tecniche", blank=True)
     feasibility = models.CharField("Fattibilita articolo", max_length=20, choices=Feasibility.choices, default=Feasibility.TO_CHECK)
+    external_purchases = models.BooleanField("Acquisti esterni", default=False)
+    external_purchases_cost = models.DecimalField(
+        "Costo acquisti esterni", max_digits=14, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(ZERO)],
+    )
+    external_work = models.BooleanField("Lavorazioni esterne", default=False)
+    external_work_cost = models.DecimalField(
+        "Costo lavorazioni esterne", max_digits=14, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(ZERO)],
+    )
+    bureaucracy = models.BooleanField("Certificati e burocrazia", default=False)
+    bureaucracy_cost = models.DecimalField(
+        "Costo certificati e burocrazia", max_digits=14, decimal_places=2, null=True, blank=True,
+        validators=[MinValueValidator(ZERO)],
+    )
     feasibility_manually_set = models.BooleanField(default=False, editable=False)
     display_order = models.PositiveSmallIntegerField(default=1)
 
@@ -117,7 +168,20 @@ class QuoteItem(models.Model):
 
     @property
     def total_cost(self) -> Decimal:
-        return self.material_cost + sum((phase.total_cost for phase in self.phases.filter(active=True)), ZERO)
+        return (
+            self.material_cost
+            + sum((phase.total_cost for phase in self.phases.filter(active=True)), ZERO)
+            + self.supplementary_cost
+        )
+
+    @property
+    def supplementary_cost(self) -> Decimal:
+        values = (
+            self.external_purchases_cost if self.external_purchases else ZERO,
+            self.external_work_cost if self.external_work else ZERO,
+            self.bureaucracy_cost if self.bureaucracy else ZERO,
+        )
+        return sum((value or ZERO for value in values), ZERO)
 
     @property
     def has_missing_material_cost(self) -> bool:
@@ -131,7 +195,7 @@ class ItemMaterial(models.Model):
     item = models.ForeignKey(QuoteItem, on_delete=models.CASCADE, related_name="materials")
     material = models.ForeignKey(Material, on_delete=models.PROTECT, verbose_name="Materiale")
     weight_kg = models.DecimalField("Peso (kg) per pezzo", max_digits=12, decimal_places=3, validators=[MinValueValidator(Decimal("0.001"))])
-    unit_cost_snapshot = models.DecimalField("Costo al kg acquisito", max_digits=12, decimal_places=4, null=True, blank=True)
+    unit_cost_snapshot = models.DecimalField("Costo acquisto/kg", max_digits=12, decimal_places=4, null=True, blank=True, validators=[MinValueValidator(ZERO)])
 
     class Meta:
         verbose_name = "materiale articolo"

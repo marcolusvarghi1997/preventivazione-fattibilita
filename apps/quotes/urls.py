@@ -5,8 +5,10 @@ from . import views
 app_name = "quotes"
 urlpatterns = [
     path("", views.dashboard, name="dashboard"),
+    path("preventivi/", views.dashboard, name="preventivi"),
     path("preventivi/cerca/", views.quote_search, name="search"),
     path("preventivi/nuovo/", views.quote_general, name="create"),
+    path("clienti/registrazione-rapida/", views.client_quick_add, name="client_quick_add"),
     path("preventivi/<int:pk>/dati/", views.quote_general, name="general"),
     path("preventivi/<int:pk>/articoli/", views.quote_items, name="items"),
     path("preventivi/<int:pk>/articoli/aggiungi/", views.item_add, name="item_add"),
@@ -15,6 +17,7 @@ urlpatterns = [
     path("preventivi/<int:pk>/articoli/<int:item_id>/rimuovi/", views.item_delete, name="item_delete"),
     path("preventivi/<int:pk>/articoli/<int:item_id>/materiali/aggiungi/", views.material_add, name="material_add"),
     path("preventivi/<int:pk>/materiali/<int:material_id>/rimuovi/", views.material_delete, name="material_delete"),
+    path("preventivi/<int:pk>/materiali/<int:material_id>/modifica/", views.material_edit, name="material_edit"),
     path("preventivi/<int:pk>/lavorazioni/", views.quote_work, name="work"),
     path("preventivi/<int:pk>/fasi/<int:phase_id>/salva/", views.phase_update, name="phase_update"),
     path("preventivi/<int:pk>/fasi/<int:phase_id>/operazioni/aggiungi/", views.operation_add, name="operation_add"),
@@ -27,5 +30,6 @@ urlpatterns = [
     path("preventivi/<int:pk>/completa/", views.quote_complete, name="complete"),
     path("preventivi/<int:pk>/duplica/", views.quote_duplicate, name="duplicate"),
     path("preventivi/<int:pk>/archivia/", views.quote_archive, name="archive"),
+    path("preventivi/<int:pk>/elimina/", views.quote_delete, name="delete"),
     path("preventivi/<int:pk>/pdf/", quote_pdf, name="pdf"),
 ]

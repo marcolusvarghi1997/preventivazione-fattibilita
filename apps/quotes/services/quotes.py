@@ -17,6 +17,12 @@ def _copy_item(source: QuoteItem, quote: Quote, *, code: str | None = None, disp
         description=source.description, revision=source.revision,
         dimensions=source.dimensions, technical_notes=source.technical_notes,
         feasibility=source.feasibility,
+        external_purchases=source.external_purchases,
+        external_purchases_cost=source.external_purchases_cost,
+        external_work=source.external_work,
+        external_work_cost=source.external_work_cost,
+        bureaucracy=source.bureaucracy,
+        bureaucracy_cost=source.bureaucracy_cost,
         feasibility_manually_set=source.feasibility_manually_set,
         display_order=display_order or source.display_order,
     )
@@ -63,10 +69,12 @@ def duplicate_quote(source: Quote, author) -> Quote:
     duplicate = Quote.objects.create(
         client=source.client,
         client_contact=source.client_contact,
+        client_email=source.client_email,
         internal_notes=source.internal_notes,
         customer_notes=source.customer_notes,
         feasibility=source.feasibility,
         offered_price=source.offered_price,
+        customer_decision=Quote.CustomerDecision.PENDING,
         author=author,
         status=Quote.Status.DRAFT,
     )

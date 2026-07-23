@@ -50,7 +50,8 @@ class Command(BaseCommand):
             "view_itemphase", "change_itemphase", "view_timeoperation", "add_timeoperation", "change_timeoperation", "delete_timeoperation",
             "view_directcost", "add_directcost", "change_directcost", "delete_directcost",
             "view_externaltreatment", "add_externaltreatment", "change_externaltreatment", "delete_externaltreatment",
-            "view_client", "view_material", "view_productionresource", "view_phasedefinition",
+            "view_client", "add_client", "view_clientcontact", "add_clientcontact",
+            "view_material", "view_productionresource", "view_phasedefinition",
         }
         commercial.permissions.set(Permission.objects.filter(codename__in=commercial_codenames))
 

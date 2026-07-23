@@ -3,26 +3,27 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <meta name="theme-color" content="#273a84">
-  <title>{% block title %}Preventivazione e fattibilità{% endblock %} | Officine Pollastri</title>
-  <link rel="icon" href="{% static 'images/officine-pollastri-logo.png' %}">
-  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=4">
+  <meta name="theme-color" content="{% if site_config %}{{ site_config.primary_color }}{% else %}#273a84{% endif %}">
+  <title>{% block title %}{% if site_config %}{{ site_config.site_title }}{% else %}Preventivazione e fattibilità{% endif %}{% endblock %} | {% if site_config %}{{ site_config.company_name }}{% else %}Officine Pollastri{% endif %}</title>
+  <link rel="icon" href="{% if site_config.favicon %}{{ site_config.favicon.url }}{% else %}{% static 'images/favicon.png' %}{% endif %}">
+  <link rel="stylesheet" href="{% static 'css/app.css' %}?v=7">
+  <style>:root{--brand-primary:{% if site_config %}{{ site_config.primary_color }}{% else %}#273a84{% endif %};--brand-accent:{% if site_config %}{{ site_config.accent_color }}{% else %}#00817d{% endif %};}</style>
   <script src="{% static 'vendor/htmx.min.js' %}" defer></script>
-  <script src="{% static 'js/app.js' %}?v=4" defer></script>
+  <script src="{% static 'js/app.js' %}?v=7" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#page-main">Vai al contenuto</a>
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="brand" href="{% url 'quotes:dashboard' %}" aria-label="Officine Pollastri — Preventivazione e fattibilità">
-        <img src="{% static 'images/officine-pollastri-logo.png' %}" alt="Officine Pollastri" width="220" height="96">
-        <span class="brand-copy"><strong>Preventivazione</strong><small>e fattibilità</small></span>
+      <a class="brand" href="{% url 'quotes:dashboard' %}" aria-label="{% if site_config %}{{ site_config.company_name }} — {{ site_config.site_title }}{% else %}Officine Pollastri — Preventivazione e fattibilità{% endif %}">
+        <img src="{% if site_config.logo %}{{ site_config.logo.url }}{% else %}{% static 'images/officine-pollastri-logo.png' %}{% endif %}" alt="{% if site_config %}{{ site_config.company_name }}{% else %}Officine Pollastri{% endif %}" width="220" height="96">
+        <span class="brand-copy"><strong>{% if site_config %}{{ site_config.site_title }}{% else %}Preventivazione{% endif %}</strong><small>{% if site_config %}{{ site_config.company_name }}{% else %}e fattibilità{% endif %}</small></span>
       </a>
       {% if user.is_authenticated %}
         <nav aria-label="Navigazione principale">
           <a href="{% url 'quotes:dashboard' %}">Preventivi</a>
           <a href="{% url 'quotes:search' %}">Ricerca</a>
-          {% if user.is_staff %}<a href="/admin/">Amministrazione</a>{% endif %}
+          {% if user.is_superuser %}<a href="{% url 'catalog:lan_settings' %}">Gestione LAN</a><a href="/admin/">Superadmin</a>{% endif %}
           <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="link-button" type="submit">Esci <span class="nav-username">({{ user.get_username }})</span></button></form>
         </nav>
       {% endif %}

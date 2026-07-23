@@ -1,0 +1,3 @@
+{% extends "base.html" %}
+{% block title %}Accesso non consentito{% endblock %}
+{% block content %}<section class="card narrow"><span class="eyebrow">Errore 403</span><h1>Accesso non consentito</h1><p>Non hai i permessi necessari per visualizzare questa pagina.</p><a class="button primary" href="{% url 'quotes:dashboard' %}">Torna ai preventivi</a></section>{% endblock %}

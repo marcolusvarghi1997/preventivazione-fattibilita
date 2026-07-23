@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load quote_format %}
 {% block content %}
 {% include "quotes/_steps.html" %}
 <div class="page-heading section-heading">
@@ -15,7 +16,7 @@
     <div class="article-body">
       <form method="post" action="{% url 'quotes:item_add' quote.pk %}" class="article-create-form" hx-post="{% url 'quotes:item_add' quote.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
         <section class="article-section"><h2>Dati articolo</h2><div class="form-grid article-fields">{% include "quotes/_form_fields.html" with form=draft_item_form %}</div></section>
-        <section class="article-section piece-section"><h2>Dati del pezzo</h2><p class="section-note">Il costo del materiale viene acquisito al salvataggio.</p><div class="form-grid piece-fields">{% include "quotes/_form_fields.html" with form=draft_material_form %}</div></section>
+        <section class="article-section piece-section"><h2>Dati del pezzo</h2><p class="section-note">Il costo di acquisto viene proposto dal catalogo e può essere modificato solo per questo preventivo.</p><div class="form-grid piece-fields">{% include "quotes/_form_fields.html" with form=draft_material_form %}</div></section>
         <div class="form-actions"><button class="button ghost" type="button" data-remove-draft>Scarta</button><button class="button primary" type="submit">Salva articolo</button></div>
       </form>
     </div>
@@ -29,7 +30,7 @@
     <div class="article-body">
       <form method="post" action="{% url 'quotes:item_add' quote.pk %}" class="article-create-form" hx-post="{% url 'quotes:item_add' quote.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
         <section class="article-section"><h2>Dati articolo</h2><div class="form-grid article-fields">{% include "quotes/_form_fields.html" with form=draft_item_form %}</div></section>
-        <section class="article-section piece-section"><h2>Dati del pezzo</h2><p class="section-note">Il costo del materiale viene acquisito al salvataggio.</p><div class="form-grid piece-fields">{% include "quotes/_form_fields.html" with form=draft_material_form %}</div></section>
+        <section class="article-section piece-section"><h2>Dati del pezzo</h2><p class="section-note">Il costo di acquisto viene proposto dal catalogo e può essere modificato solo per questo preventivo.</p><div class="form-grid piece-fields">{% include "quotes/_form_fields.html" with form=draft_material_form %}</div></section>
         <div class="form-actions"><button class="button ghost" type="button" data-remove-draft>Scarta</button><button class="button primary" type="submit">Salva articolo</button></div>
       </form>
     </div>
@@ -49,7 +50,7 @@
       <section class="article-section">
         <div class="subheading"><h2>Dati articolo</h2><span class="status">{{ row.item.get_feasibility_display }}</span></div>
         {% if quote.status != "archived" %}
-        <form method="post" action="{% url 'quotes:item_edit' quote.pk row.item.pk %}" class="form-grid article-fields" hx-post="{% url 'quotes:item_edit' quote.pk row.item.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}{% include "quotes/_form_fields.html" with form=row.item_form %}<div class="form-actions full"><button class="button secondary" type="submit">Salva dati articolo</button></div></form>
+        <form method="post" action="{% url 'quotes:item_edit' quote.pk row.item.pk %}" class="form-grid article-fields" hx-post="{% url 'quotes:item_edit' quote.pk row.item.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}{% include "quotes/_form_fields.html" with form=row.item_form %}<div class="form-actions full"><button class="button primary" type="submit">Salva dati articolo</button></div></form>
         {% else %}
         <dl class="data-grid"><div><dt>Codice</dt><dd>{{ row.item.code }}</dd></div><div><dt>Quantità</dt><dd>{{ row.item.quantity }}</dd></div><div><dt>Descrizione</dt><dd>{{ row.item.description|default:"—" }}</dd></div><div><dt>Revisione</dt><dd>{{ row.item.revision|default:"—" }}</dd></div><div><dt>Dimensioni</dt><dd>{{ row.item.dimensions|default:"—" }}</dd></div><div><dt>Note tecniche</dt><dd>{{ row.item.technical_notes|default:"—" }}</dd></div></dl>
         {% endif %}
@@ -57,8 +58,8 @@
 
       <section class="article-section piece-section">
         <div class="subheading"><div><h2>Dati del pezzo</h2><p class="section-note">Materiali e peso riferiti al singolo pezzo.</p></div><span class="status">{{ row.item.materials.count }} material{{ row.item.materials.count|pluralize:"e,i" }}</span></div>
-        {% if row.item.materials.all %}<div class="table-wrap material-table"><table><thead><tr><th>Materiale</th><th>Peso / pezzo</th><th>Costo acquisito / kg</th><th>Costo totale</th><th><span class="sr-only">Azioni</span></th></tr></thead><tbody>
-          {% for material_row in row.item.materials.all %}<tr><td data-label="Materiale"><strong>{{ material_row.material.name }}</strong></td><td data-label="Peso / pezzo">{{ material_row.weight_kg }} kg</td><td data-label="Costo acquisito / kg">{% if material_row.unit_cost_snapshot is None %}<span class="warning-text">Non valorizzato</span>{% else %}€ {{ material_row.unit_cost_snapshot|floatformat:4 }}{% endif %}</td><td data-label="Costo totale">{% if material_row.total_cost is None %}<span class="warning-text">Non valorizzato</span>{% else %}€ {{ material_row.total_cost|floatformat:2 }}{% endif %}</td><td class="row-actions">{% if quote.status != "archived" %}<form method="post" action="{% url 'quotes:material_delete' quote.pk material_row.pk %}" data-confirm="Rimuovere il materiale {{ material_row.material.name }} dall’articolo {{ row.item.code }}?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form>{% endif %}</td></tr>{% endfor %}
+        {% if row.materials %}<div class="table-wrap material-table"><table><thead><tr><th>Materiale</th><th>Peso / pezzo</th><th>Costo acquisto/kg</th><th>Costo totale</th><th><span class="sr-only">Azioni</span></th></tr></thead><tbody>
+          {% for material_entry in row.materials %}{% with material_row=material_entry.row edit_form=material_entry.form %}<tr><td data-label="Materiale"><strong>{{ material_row.material.name }}</strong>{% if quote.status != "archived" %}<form id="material-form-{{ material_row.pk }}" method="post" action="{% url 'quotes:material_edit' quote.pk material_row.pk %}">{% csrf_token %}</form>{% endif %}</td><td data-label="Peso / pezzo">{% if quote.status != "archived" %}<label class="sr-only" for="{{ edit_form.weight_kg.id_for_label }}">Peso di {{ material_row.material.name }} per pezzo</label>{{ edit_form.weight_kg.as_widget }}<small class="current-value">{{ material_row.weight_kg|weight }}</small>{% else %}{{ material_row.weight_kg|weight }}{% endif %}</td><td data-label="Costo acquisto/kg">{% if quote.status != "archived" %}<label class="sr-only" for="{{ edit_form.unit_cost_snapshot.id_for_label }}">Costo acquisto/kg di {{ material_row.material.name }}</label>{{ edit_form.unit_cost_snapshot.as_widget }}{% if material_row.unit_cost_snapshot is not None %}<small class="current-value">{{ material_row.unit_cost_snapshot|money }}/kg</small>{% endif %}{% elif material_row.unit_cost_snapshot is None %}<span class="warning-text">Non valorizzato</span>{% else %}{{ material_row.unit_cost_snapshot|money }}/kg{% endif %}</td><td data-label="Costo totale">{% if material_row.total_cost is None %}<span class="warning-text">Non valorizzato</span>{% else %}{{ material_row.total_cost|money }}{% endif %}</td><td class="row-actions" data-label="Azioni">{% if quote.status != "archived" %}<button class="button secondary small" type="submit" form="material-form-{{ material_row.pk }}">Salva</button><form method="post" action="{% url 'quotes:material_delete' quote.pk material_row.pk %}" data-confirm="Rimuovere il materiale {{ material_row.material.name }} dall’articolo {{ row.item.code }}?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form>{% endif %}</td></tr>{% endwith %}{% endfor %}
         </tbody></table></div>{% else %}<div class="alert error">Dato obbligatorio mancante: aggiungi almeno un materiale.</div>{% endif %}
         {% if quote.status != "archived" %}
         <details class="add-panel" {% if row.material_form.errors %}open{% endif %}><summary>Aggiungi un altro materiale</summary><form method="post" action="{% url 'quotes:material_add' quote.pk row.item.pk %}" class="form-grid material-add-form" hx-post="{% url 'quotes:material_add' quote.pk row.item.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}{% include "quotes/_form_fields.html" with form=row.material_form %}<div class="form-actions"><button class="button secondary" type="submit">Aggiungi materiale</button></div></form></details>
@@ -70,5 +71,6 @@
   </details>
 {% empty %}<div class="empty card"><strong>Nessun articolo presente.</strong><br>Usa “Aggiungi articolo” per creare il primo blocco completo.</div>{% endfor %}
 </section>
+{{ material_costs|json_script:"material-costs-data" }}
 <div class="form-actions sticky-actions"><a class="button secondary" href="{% url 'quotes:general' quote.pk %}">Indietro</a><a class="button primary {% if not quote.items.exists %}disabled{% endif %}" href="{% url 'quotes:work' quote.pk %}">{% if quote.status == "archived" %}Consulta lavorazioni{% else %}Salva e continua{% endif %}</a></div>
 {% endblock %}

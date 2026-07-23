@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Gestione LAN{% endblock %}
+{% block content %}
+<div class="page-heading">
+  <div><span class="eyebrow">Solo superadmin</span><h1>Gestione rete locale</h1><p>Controlla da qui l'accesso degli altri dispositivi senza riavviare il server.</p></div>
+  <span class="status large-status {% if configuration.lan_enabled %}completed{% else %}draft{% endif %}">{% if configuration.lan_enabled %}LAN attiva{% else %}LAN disattivata{% endif %}</span>
+</div>
+
+<div class="lan-layout">
+  <section class="card lan-control" aria-labelledby="lan-control-title">
+    <span class="eyebrow">Accesso remoto</span>
+    <h2 id="lan-control-title">{% if configuration.lan_enabled %}Gli altri PC possono collegarsi{% else %}Gli altri PC sono bloccati{% endif %}</h2>
+    <p>{% if configuration.lan_enabled %}Il server accetta le richieste provenienti dalla rete locale. Restano necessari un utente autorizzato e la password.{% else %}Solo questo PC può usare l'applicazione. Puoi abilitare la rete quando serve.{% endif %}</p>
+    <form method="post" class="lan-toggle-form">{% csrf_token %}
+      <label class="switch-control" for="{{ form.lan_enabled.id_for_label }}">{{ form.lan_enabled }}<span><strong>{{ form.lan_enabled.label }}</strong><small>La modifica ha effetto immediato e non richiede il riavvio.</small></span></label>
+      {% for error in form.lan_enabled.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
+      <button class="button primary large" type="submit">Salva impostazione LAN</button>
+    </form>
+  </section>
+
+  <aside class="summary-stack">
+    <section class="card summary-card">
+      <span class="eyebrow">Server</span><h2>Stato dell'avvio</h2>
+      <dl class="data-grid lan-data-grid">
+        <div><dt>Modalità</dt><dd>{% if lan_script_active %}Script LAN{% else %}Avvio locale{% endif %}</dd></div>
+        <div><dt>Porta</dt><dd>{{ server_port }}</dd></div>
+      </dl>
+      {% if not lan_script_active %}<p class="field-help">La gestione resta disponibile anche con l'avvio locale; l'accesso remoto dipende esclusivamente dall'interruttore sopra.</p>{% endif %}
+    </section>
+    <section class="card summary-card">
+      <span class="eyebrow">Collegamento</span><h2>Indirizzi per gli altri PC</h2>
+      {% if lan_urls %}<ul class="network-addresses">{% for url in lan_urls %}<li><code>{{ url }}</code><button class="button secondary small" type="button" data-copy-text="{{ url }}">Copia</button></li>{% endfor %}</ul>{% else %}<div class="alert warning">Nessun indirizzo IPv4 privato rilevato. Verifica che il PC sia collegato alla rete aziendale.</div>{% endif %}
+      <p class="field-help">Il firewall Windows deve consentire la porta {{ server_port }} sulla rete privata. Non esporre questa applicazione direttamente su Internet.</p>
+    </section>
+  </aside>
+</div>
+<div class="form-actions"><a class="button secondary" href="{% url 'quotes:dashboard' %}">Torna alla dashboard</a>{% if user.is_superuser %}<a class="button secondary" href="/admin/">Apri amministrazione</a>{% endif %}</div>
+{% endblock %}

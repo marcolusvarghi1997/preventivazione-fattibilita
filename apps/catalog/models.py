@@ -1,4 +1,5 @@
 from decimal import Decimal
+from django.core.validators import RegexValidator
 from django.db import models
 
 
@@ -17,6 +18,69 @@ class Client(models.Model):
 
     def __str__(self) -> str:
         return self.name
+
+
+class ClientContact(models.Model):
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name="contacts", verbose_name="Cliente")
+    name = models.CharField("Nome referente", max_length=150, db_index=True)
+    email = models.EmailField("Email", blank=True, db_index=True)
+    phone = models.CharField("Telefono", max_length=50, blank=True)
+    notes = models.TextField("Note", blank=True)
+    active = models.BooleanField("Attivo", default=True)
+
+    class Meta:
+        verbose_name = "referente cliente"
+        verbose_name_plural = "referenti clienti"
+        ordering = ["client__name", "name", "email"]
+        constraints = [
+            models.UniqueConstraint(fields=["client", "name", "email"], name="unique_contact_per_client_email"),
+        ]
+
+    def __str__(self) -> str:
+        suffix = f" — {self.email}" if self.email else ""
+        return f"{self.name}{suffix}"
+
+
+hex_color_validator = RegexValidator(
+    regex=r"^#[0-9A-Fa-f]{6}$",
+    message="Inserire un colore esadecimale nel formato #RRGGBB.",
+)
+
+
+class SiteConfiguration(models.Model):
+    site_title = models.CharField("Titolo applicazione", max_length=100, default="Preventivazione e fattibilità")
+    company_name = models.CharField("Nome azienda", max_length=200, default="Officine Pollastri")
+    address = models.TextField("Indirizzo", blank=True)
+    vat = models.CharField("Partita IVA", max_length=30, blank=True)
+    email = models.EmailField("Email azienda", blank=True)
+    phone = models.CharField("Telefono azienda", max_length=50, blank=True)
+    terms = models.TextField("Condizioni nei PDF cliente", blank=True, default="Validità e condizioni da definire.")
+    logo = models.FileField("Logo header e PDF", upload_to="branding/", blank=True)
+    favicon = models.FileField("Favicon", upload_to="branding/", blank=True)
+    primary_color = models.CharField("Colore principale", max_length=7, default="#273A84", validators=[hex_color_validator])
+    accent_color = models.CharField("Colore secondario", max_length=7, default="#00817D", validators=[hex_color_validator])
+    lan_enabled = models.BooleanField(
+        "Accesso dalla rete LAN",
+        default=False,
+        help_text="Se attivo, gli altri dispositivi della stessa rete possono usare l'applicazione tramite l'indirizzo del PC server.",
+    )
+    updated_at = models.DateTimeField("Ultima modifica", auto_now=True)
+
+    class Meta:
+        verbose_name = "configurazione azienda e rete"
+        verbose_name_plural = "configurazione azienda e rete"
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+
+    @classmethod
+    def load(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj
+
+    def __str__(self) -> str:
+        return "Configurazione applicazione"
 
 
 class Material(models.Model):

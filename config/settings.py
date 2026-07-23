@@ -10,10 +10,12 @@ def env_bool(name: str, default: bool = False) -> bool:
 
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", "development-only-change-me")
 DEBUG = env_bool("DJANGO_DEBUG", True)
-ALLOWED_HOSTS = [v.strip() for v in os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",") if v.strip()]
+LAN_SCRIPT_ACTIVE = env_bool("LAN_SCRIPT_ACTIVE", False)
+ALLOWED_HOSTS = [v.strip() for v in os.getenv("DJANGO_ALLOWED_HOSTS", "*").split(",") if v.strip()]
 CSRF_TRUSTED_ORIGINS = [v.strip() for v in os.getenv("DJANGO_CSRF_TRUSTED_ORIGINS", "").split(",") if v.strip()]
 
 INSTALLED_APPS = [
+    "jazzmin",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -29,6 +31,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
+    "apps.catalog.middleware.LanAccessMiddleware",
     "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
@@ -46,6 +49,7 @@ TEMPLATES = [{
         "django.template.context_processors.request",
         "django.contrib.auth.context_processors.auth",
         "django.contrib.messages.context_processors.messages",
+        "apps.catalog.context_processors.site_configuration",
     ]},
 }]
 WSGI_APPLICATION = "config.wsgi.application"
@@ -77,8 +81,10 @@ TIME_ZONE = "Europe/Rome"
 USE_I18N = True
 USE_TZ = True
 STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = Path(os.getenv("STATIC_ROOT", BASE_DIR / "staticfiles"))
 STATICFILES_DIRS = [BASE_DIR / "static"]
+MEDIA_URL = "media/"
+MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", BASE_DIR / "media"))
 STORAGES = {"staticfiles": {"BACKEND": (
     "django.contrib.staticfiles.storage.StaticFilesStorage"
     if DEBUG else "whitenoise.storage.CompressedManifestStaticFilesStorage"
@@ -100,4 +106,44 @@ COMPANY = {
     "phone": os.getenv("COMPANY_PHONE", ""),
     "logo_path": os.getenv("COMPANY_LOGO_PATH", ""),
     "terms": os.getenv("COMPANY_TERMS", "Validita e condizioni da definire."),
+}
+
+JAZZMIN_SETTINGS = {
+    "site_title": "Amministrazione preventivi",
+    "site_header": "Superadmin",
+    "site_brand": "Preventivazione",
+    "site_logo": "images/officine-pollastri-logo.png",
+    "login_logo": "images/officine-pollastri-logo.png",
+    "site_icon": "images/favicon.png",
+    "welcome_sign": "Gestione azienda, utenti e configurazione",
+    "copyright": "Officine Pollastri",
+    "search_model": ["quotes.Quote", "catalog.Client", "catalog.Material"],
+    "custom_css": "css/admin-overrides.css",
+    "custom_links": {
+        "catalog": [{
+            "name": "Gestione LAN",
+            "url": "/superadmin/rete/",
+            "icon": "fas fa-network-wired",
+        }],
+    },
+    "show_ui_builder": False,
+    "navigation_expanded": True,
+    "icons": {
+        "auth": "fas fa-users-cog",
+        "auth.user": "fas fa-user",
+        "catalog.Client": "fas fa-building",
+        "catalog.ClientContact": "fas fa-address-card",
+        "catalog.Material": "fas fa-layer-group",
+        "catalog.ProductionResource": "fas fa-industry",
+        "catalog.SiteConfiguration": "fas fa-sliders-h",
+        "quotes.Quote": "fas fa-file-invoice-dollar",
+    },
+}
+
+JAZZMIN_UI_TWEAKS = {
+    "theme": "flatly",
+    "navbar": "navbar-white navbar-light",
+    "sidebar": "sidebar-dark-primary",
+    "accent": "accent-info",
+    "button_classes": {"primary": "btn-primary", "secondary": "btn-outline-secondary"},
 }
