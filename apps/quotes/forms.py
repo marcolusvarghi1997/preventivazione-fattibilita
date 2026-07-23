@@ -7,6 +7,13 @@ from .formatting import format_decimal_it, normalize_decimal_input
 from .models import DirectCost, ExternalTreatment, Feasibility, ItemMaterial, ItemPhase, Quote, QuoteItem, TimeOperation
 
 
+FEASIBILITY_UI_CHOICES = (
+    (Feasibility.INTERNAL, Feasibility.INTERNAL.label),
+    (Feasibility.TO_CHECK, Feasibility.TO_CHECK.label),
+    (Feasibility.NOT_FEASIBLE, Feasibility.NOT_FEASIBLE.label),
+)
+
+
 class ItalianDecimalInput(forms.TextInput):
     def __init__(self, attrs=None, places=2):
         self.places = places
@@ -73,8 +80,8 @@ class QuoteGeneralForm(forms.ModelForm):
         widgets = {
             "date": DateInput(),
             "client": forms.HiddenInput(attrs={"data-client-id": ""}),
-            "client_contact": forms.TextInput(attrs={"data-contact-name": ""}),
-            "client_email": forms.EmailInput(attrs={"data-contact-email": ""}),
+            "client_contact": forms.HiddenInput(attrs={"data-contact-name": ""}),
+            "client_email": forms.HiddenInput(attrs={"data-contact-email": ""}),
             "internal_notes": forms.Textarea(attrs={"rows": 3}),
             "customer_notes": forms.Textarea(attrs={"rows": 3}),
         }
@@ -87,6 +94,14 @@ class QuoteGeneralForm(forms.ModelForm):
         self.fields["client_email"].required = False
         if self.instance and self.instance.client_id:
             self.fields["client_lookup"].initial = self.instance.client.name
+            saved_contact = ClientContact.objects.filter(
+                client_id=self.instance.client_id,
+                active=True,
+                name__iexact=self.instance.client_contact,
+                email__iexact=self.instance.client_email,
+            ).first()
+            if saved_contact:
+                self.fields["contact_id"].initial = saved_contact.pk
         self.order_fields((
             "date", "client_lookup", "client", "contact_id", "client_contact", "client_email",
             "internal_notes", "customer_notes",
@@ -110,8 +125,11 @@ class QuoteGeneralForm(forms.ModelForm):
             if not contact:
                 self.add_error("client_contact", "Il referente selezionato non appartiene al cliente indicato.")
             else:
-                cleaned["client_contact"] = cleaned.get("client_contact") or contact.name
-                cleaned["client_email"] = cleaned.get("client_email") or contact.email
+                cleaned["client_contact"] = contact.name
+                cleaned["client_email"] = contact.email
+        elif client:
+            cleaned["client_contact"] = ""
+            cleaned["client_email"] = ""
         return cleaned
 
 
@@ -130,6 +148,10 @@ class QuoteSummaryForm(forms.ModelForm):
         fields = ("feasibility", "offered_price", "customer_decision")
         labels = {"feasibility": "Fattibilità"}
         widgets = {"feasibility": forms.RadioSelect()}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["feasibility"].choices = FEASIBILITY_UI_CHOICES
 
     def save(self, commit=True):
         quote = super().save(commit=False)
@@ -167,6 +189,7 @@ class QuoteItemForm(forms.ModelForm):
         )
         labels = {"quantity": "Quantità", "feasibility": "Fattibilità articolo"}
         widgets = {
+            "description": forms.Textarea(attrs={"rows": 2}),
             "technical_notes": forms.Textarea(attrs={"rows": 3}),
             "quantity": forms.NumberInput(attrs={"min": 1}),
             "feasibility": forms.RadioSelect(),
@@ -177,6 +200,7 @@ class QuoteItemForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        self.fields["feasibility"].choices = FEASIBILITY_UI_CHOICES
         self.fields["quantity"].min_value = 1
         self.fields["quantity"].widget.attrs["min"] = "1"
 
@@ -360,3 +384,30 @@ class QuickClientForm(forms.ModelForm):
                 phone=self.cleaned_data.get("contact_phone", ""),
             )
         return client
+
+
+class QuickClientContactForm(forms.ModelForm):
+    class Meta:
+        model = ClientContact
+        fields = ("client", "name", "email", "phone")
+        widgets = {
+            "client": forms.HiddenInput(attrs={"data-quick-contact-client": ""}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["client"].queryset = Client.objects.filter(active=True)
+
+    def clean(self):
+        cleaned = super().clean()
+        client = cleaned.get("client")
+        name = (cleaned.get("name") or "").strip()
+        email = (cleaned.get("email") or "").strip()
+        if not client:
+            return cleaned
+        contacts = ClientContact.objects.filter(client=client)
+        if name and contacts.filter(name__iexact=name).exists():
+            self.add_error("name", "Esiste già un referente con questo nome per il cliente selezionato.")
+        if email and contacts.filter(email__iexact=email).exists():
+            self.add_error("email", "Questa email è già associata a un referente del cliente selezionato.")
+        return cleaned

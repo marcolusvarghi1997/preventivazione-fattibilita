@@ -65,6 +65,11 @@ def main(output_path):
     client = Client.objects.create(name="Cliente Playwright", email="amministrazione@playwright.example", phone="02 123456")
     contact = ClientContact.objects.create(client=client, name="Referente Unico", email="referente@playwright.example")
     Client.objects.create(name="Altro Cliente", email="altro@example.com", phone="011 987654")
+    for index in range(12):
+        Client.objects.create(
+            name=f"Cliente Scorrimento {index + 1:02d}",
+            email=f"scorrimento{index + 1:02d}@example.com",
+        )
     material = Material.objects.create(
         name="Acciaio Playwright",
         current_cost_per_kg=Decimal("2.5000"),

@@ -2,7 +2,7 @@
 {% load quote_format %}
 {% block content %}
 {% include "quotes/_steps.html" %}
-<div class="page-heading section-heading"><div><span class="eyebrow">Preventivo {{ quote.number }}</span><h1>Lavorazioni</h1><p>Attiva solo le fasi necessarie e completa i dati della lavorazione.</p></div></div>
+<div class="page-heading section-heading"><div><span class="eyebrow">Preventivo {{ quote.number }}</span><h1>3. Lavorazioni</h1><p>Attiva solo le fasi necessarie e completa i dati della lavorazione.</p></div></div>
 {% if quote.status == "archived" %}<div class="alert warning"><strong>Preventivo archiviato:</strong> le lavorazioni sono disponibili in sola lettura. Duplica il preventivo dal riepilogo per modificarle.</div>{% endif %}
 {% for item_row in item_rows %}
 <section class="item-work">
@@ -44,5 +44,5 @@
   </div>
 </section>
 {% empty %}<div class="alert error">Prima di configurare le lavorazioni devi inserire almeno un articolo.</div>{% endfor %}
-<div class="form-actions sticky-actions"><a class="button secondary" href="{% url 'quotes:items' quote.pk %}">Indietro</a><a class="button primary" href="{% url 'quotes:summary' quote.pk %}">Vai al riepilogo</a></div>
+<div class="form-actions sticky-actions wizard-actions"><a class="button secondary" href="{% url 'quotes:items' quote.pk %}">Indietro</a><a class="button primary" href="{% url 'quotes:summary' quote.pk %}">Vai al riepilogo</a></div>
 {% endblock %}

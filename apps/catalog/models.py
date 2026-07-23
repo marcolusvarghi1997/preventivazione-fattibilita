@@ -2,6 +2,7 @@ from decimal import Decimal
 from django.conf import settings
 from django.core.validators import RegexValidator
 from django.db import models
+from django.db.models.functions import Lower
 
 
 class Client(models.Model):
@@ -35,6 +36,17 @@ class ClientContact(models.Model):
         ordering = ["client__name", "name", "email"]
         constraints = [
             models.UniqueConstraint(fields=["client", "name", "email"], name="unique_contact_per_client_email"),
+            models.UniqueConstraint(
+                models.F("client"),
+                Lower("name"),
+                name="unique_contact_name_per_client_ci",
+            ),
+            models.UniqueConstraint(
+                models.F("client"),
+                Lower("email"),
+                condition=~models.Q(email=""),
+                name="unique_contact_email_per_client_ci",
+            ),
         ]
 
     def __str__(self) -> str:

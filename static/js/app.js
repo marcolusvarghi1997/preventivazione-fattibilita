@@ -20,6 +20,24 @@ const initDisclosures = (root = document) => {
   root.querySelectorAll("details").forEach(syncDisclosure);
 };
 
+const dismissToast = (toast) => {
+  if (!toast || toast.classList.contains("is-leaving")) return;
+  toast.classList.add("is-leaving");
+  window.setTimeout(() => {
+    const region = toast.closest(".toast-region");
+    toast.remove();
+    if (region && !region.querySelector("[data-toast]")) region.remove();
+  }, 180);
+};
+
+const initToasts = (root = document) => {
+  root.querySelectorAll("[data-toast]:not([data-toast-ready])").forEach((toast) => {
+    toast.dataset.toastReady = "true";
+    const duration = toast.classList.contains("error") ? 8000 : 4800;
+    window.setTimeout(() => dismissToast(toast), duration);
+  });
+};
+
 const readJsonData = (id, fallback) => {
   const element = document.getElementById(id);
   if (!element) return fallback;
@@ -57,14 +75,6 @@ const hideClientResults = (form) => {
   delete input.dataset.activeIndex;
 };
 
-const updateClientIndicator = (form, client) => {
-  const indicator = form.querySelector("[data-selected-client]");
-  const name = indicator?.querySelector("[data-selected-client-name]");
-  if (!indicator || !name) return;
-  indicator.hidden = !client;
-  name.textContent = client?.name || "";
-};
-
 const clearContactFields = (form) => {
   const contactId = form.querySelector("[data-contact-id]");
   const contactName = form.querySelector("[data-contact-name]");
@@ -79,6 +89,13 @@ const setContactState = (form, message) => {
   if (state) state.textContent = message;
 };
 
+const setContactControls = (form, enabled) => {
+  const select = form.querySelector("[data-contact-select]");
+  const addButton = form.querySelector("[data-open-contact-dialog]");
+  if (select) select.disabled = !enabled;
+  if (addButton) addButton.disabled = !enabled;
+};
+
 const applyContact = (form, contact) => {
   const select = form.querySelector("[data-contact-select]");
   if (select) select.value = contact ? String(contact.id) : "";
@@ -86,9 +103,10 @@ const applyContact = (form, contact) => {
   if (contact) {
     form.querySelector("[data-contact-name]").value = contact.name || "";
     form.querySelector("[data-contact-email]").value = contact.email || "";
-    setContactState(form, "Referente selezionato; i dati sottostanti restano modificabili.");
+    setContactState(form, `${contact.name}${contact.email ? ` · ${contact.email}` : ""}`);
   } else {
-    setContactState(form, "Inserimento libero: compila nome ed email del referente.");
+    clearContactFields(form);
+    setContactState(form, "Nessun referente selezionato.");
   }
 };
 
@@ -96,10 +114,17 @@ const populateContacts = (form, clientId, {preserveExisting = true} = {}) => {
   const select = form.querySelector("[data-contact-select]");
   const contactId = form.querySelector("[data-contact-id]");
   if (!select || !contactId) return;
+  const hasClient = Boolean(clientId);
   const currentName = normalizeSearch(form.querySelector("[data-contact-name]")?.value);
   const currentEmail = normalizeSearch(form.querySelector("[data-contact-email]")?.value);
   contactId.value = "";
-  select.replaceChildren(new Option("Inserimento libero", ""));
+  select.replaceChildren(new Option(hasClient ? "Nessun referente selezionato" : "Seleziona prima un cliente", ""));
+  setContactControls(form, hasClient);
+  if (!hasClient) {
+    clearContactFields(form);
+    setContactState(form, "Seleziona prima un cliente.");
+    return;
+  }
   const contacts = contactsData.filter((contact) => String(contact.client_id) === String(clientId));
   let selectedContact = null;
   contacts.forEach((contact) => {
@@ -111,28 +136,16 @@ const populateContacts = (form, clientId, {preserveExisting = true} = {}) => {
   });
   if (!selectedContact && contacts.length === 1 && (!preserveExisting || (!currentName && !currentEmail))) selectedContact = contacts[0];
   if (selectedContact) applyContact(form, selectedContact);
-  else setContactState(form, contacts.length ? "Scegli un referente oppure usa l'inserimento libero." : "Nessun referente registrato: usa l'inserimento libero.");
+  else setContactState(form, contacts.length ? "Scegli un referente dall’elenco." : "Nessun referente registrato per questo cliente.");
 };
 
 const selectClient = (form, client, {preserveContact = false} = {}) => {
   if (!form || !client) return;
   form.querySelector("[data-client-search]").value = client.name;
   form.querySelector("[data-client-id]").value = String(client.id);
-  updateClientIndicator(form, client);
   if (!preserveContact) clearContactFields(form);
   populateContacts(form, client.id, {preserveExisting: preserveContact});
   hideClientResults(form);
-};
-
-const clearClient = (form, {focus = true} = {}) => {
-  const input = form.querySelector("[data-client-search]");
-  input.value = "";
-  form.querySelector("[data-client-id]").value = "";
-  clearContactFields(form);
-  populateContacts(form, "", {preserveExisting: false});
-  updateClientIndicator(form, null);
-  hideClientResults(form);
-  if (focus) input.focus();
 };
 
 const renderClientResults = (form) => {
@@ -140,7 +153,11 @@ const renderClientResults = (form) => {
   const results = form.querySelector("[data-client-results]");
   if (!input || !results) return;
   const query = normalizeSearch(input.value);
-  const matches = clientsData.filter((client) => !query || clientSearchText(client).includes(query)).slice(0, 8);
+  const terms = query.split(/\s+/).filter(Boolean);
+  const matches = clientsData.filter((client) => {
+    const searchable = clientSearchText(client);
+    return terms.every((term) => searchable.includes(term));
+  });
   results.replaceChildren();
   matches.forEach((client, index) => {
     const item = document.createElement("li");
@@ -185,8 +202,6 @@ const initClientForms = (root = document) => {
   root.querySelectorAll("[data-client-general]").forEach((form) => {
     const clientId = form.querySelector("[data-client-id]");
     if (clientId?.value) {
-      const client = clientsData.find((entry) => String(entry.id) === String(clientId.value));
-      updateClientIndicator(form, client);
       populateContacts(form, clientId.value, {preserveExisting: true});
     } else {
       populateContacts(form, "", {preserveExisting: true});
@@ -210,9 +225,19 @@ const syncExtraCosts = (root = document, focusEnabled = false) => {
 
 const initInteractive = (root = document) => {
   initDisclosures(root);
+  initToasts(root);
   initClientForms(root);
   syncExtraCosts(root);
 };
+
+document.addEventListener("pointerdown", (event) => {
+  const clientResult = event.target.closest?.("[data-client-result]");
+  if (!clientResult) return;
+  event.preventDefault();
+  const form = clientResult.closest("[data-client-general]");
+  const client = clientsData.find((entry) => String(entry.id) === clientResult.dataset.clientResult);
+  selectClient(form, client);
+});
 
 document.addEventListener("toggle", (event) => {
   if (event.target instanceof HTMLDetailsElement) syncDisclosure(event.target);
@@ -224,9 +249,29 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const dismissButton = event.target.closest("[data-dismiss-toast]");
+  if (dismissButton) {
+    dismissToast(dismissButton.closest("[data-toast]"));
+    return;
+  }
+
   const openClientDialog = event.target.closest("[data-open-client-dialog]");
   if (openClientDialog) {
     document.querySelector("[data-client-dialog]")?.showModal();
+    return;
+  }
+
+  const openContactDialog = event.target.closest("[data-open-contact-dialog]");
+  if (openContactDialog) {
+    const generalForm = openContactDialog.closest("[data-client-general]");
+    const clientId = generalForm?.querySelector("[data-client-id]")?.value;
+    const client = clientsData.find((entry) => String(entry.id) === String(clientId));
+    const dialog = document.querySelector("[data-contact-dialog]");
+    if (!dialog || !client) return;
+    dialog.querySelector("[data-quick-contact-client]").value = String(client.id);
+    dialog.querySelector("[data-contact-client-name]").textContent = client.name;
+    dialog.showModal();
+    dialog.querySelector('input[name$="-name"]')?.focus();
     return;
   }
 
@@ -236,17 +281,9 @@ document.addEventListener("click", (event) => {
     return;
   }
 
-  const clientResult = event.target.closest("[data-client-result]");
-  if (clientResult) {
-    const form = clientResult.closest("[data-client-general]");
-    const client = clientsData.find((entry) => String(entry.id) === clientResult.dataset.clientResult);
-    selectClient(form, client);
-    return;
-  }
-
-  const clearClientButton = event.target.closest("[data-clear-client]");
-  if (clearClientButton) {
-    clearClient(clearClientButton.closest("[data-client-general]"));
+  const closeContactDialog = event.target.closest("[data-close-contact-dialog]");
+  if (closeContactDialog) {
+    closeContactDialog.closest("dialog")?.close();
     return;
   }
 
@@ -331,7 +368,6 @@ document.addEventListener("input", (event) => {
         hidden.value = "";
         clearContactFields(form);
         populateContacts(form, "", {preserveExisting: false});
-        updateClientIndicator(form, null);
       }
     }
     renderClientResults(form);
@@ -345,7 +381,7 @@ document.addEventListener("input", (event) => {
   const card = event.target.closest("[data-new-article]");
   if (!card) return;
   const code = card.querySelector('input[name="code"]')?.value.trim();
-  const description = card.querySelector('input[name="description"]')?.value.trim();
+  const description = card.querySelector('[name="description"]')?.value.trim();
   const title = card.querySelector(".article-summary strong");
   const subtitle = card.querySelector(".article-summary small");
   if (title) title.textContent = code || "Articolo da completare";
@@ -397,6 +433,37 @@ document.addEventListener("submit", async (event) => {
     if (result.contact) contactsData.push({...result.contact, client_id: result.client.id});
     const generalForm = document.querySelector("[data-client-general]");
     selectClient(generalForm, result.client);
+    form.closest("dialog")?.close();
+    form.reset();
+    errors.hidden = true;
+  } catch (_error) {
+    errors.hidden = false;
+    errors.textContent = "Registrazione non riuscita. Verifica la connessione e riprova.";
+  } finally {
+    submitter?.removeAttribute("aria-busy");
+    if (submitter) delete submitter.dataset.submitting;
+  }
+});
+
+document.addEventListener("submit", async (event) => {
+  const form = event.target;
+  if (!(form instanceof HTMLFormElement) || !form.matches("[data-quick-contact-form]")) return;
+  event.preventDefault();
+  const errors = form.querySelector("[data-quick-contact-errors]");
+  const submitter = event.submitter;
+  submitter?.setAttribute("aria-busy", "true");
+  try {
+    const response = await fetch(form.action, {method: "POST", body: new FormData(form), headers: {"X-Requested-With": "XMLHttpRequest"}});
+    const result = await response.json();
+    if (!response.ok) {
+      errors.hidden = false;
+      errors.textContent = Object.values(result.errors || {}).flat().join(" ") || "Controlla i dati inseriti.";
+      return;
+    }
+    contactsData.push(result.contact);
+    const generalForm = document.querySelector("[data-client-general]");
+    populateContacts(generalForm, result.contact.client_id, {preserveExisting: false});
+    applyContact(generalForm, result.contact);
     form.closest("dialog")?.close();
     form.reset();
     errors.hidden = true;

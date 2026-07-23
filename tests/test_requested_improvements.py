@@ -1,4 +1,6 @@
 from decimal import Decimal
+from pathlib import Path
+import signal
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
@@ -10,8 +12,18 @@ from django.urls import reverse
 from apps.catalog.models import Client, ClientContact, LanDeviceAccess, Material, PhaseDefinition, ProductionResource
 from apps.catalog.network import get_lan_ipv4_addresses
 from apps.quotes.formatting import format_decimal_it, format_money, format_weight, normalize_decimal_input
-from apps.quotes.forms import ItemMaterialEditForm, QuoteItemForm, QuoteSummaryForm
+from apps.quotes.forms import (
+    DirectCostForm,
+    ItalianDecimalField,
+    ItemMaterialEditForm,
+    ItemMaterialForm,
+    QuoteItemForm,
+    QuoteSummaryForm,
+    TimeOperationForm,
+    TreatmentForm,
+)
 from apps.quotes.models import ItemMaterial, ItemPhase, Quote, QuoteItem, TimeOperation
+from config.lan_server import enable_console_ctrl_c, run as run_lan_server, stop_confirmed
 
 
 class RequestedPermissionTests(TestCase):
@@ -110,6 +122,37 @@ class RequestedEconomicRuleTests(TestCase):
         self.assertEqual(material_form.cleaned_data["unit_cost_snapshot"], Decimal("3.75"))
         self.assertEqual(summary_form.cleaned_data["offered_price"], Decimal("1234.56"))
 
+    def test_every_economic_form_uses_the_shared_dot_and_comma_decimal_field(self):
+        forms = (
+            QuoteSummaryForm(),
+            QuoteItemForm(),
+            ItemMaterialForm(),
+            ItemMaterialEditForm(),
+            TimeOperationForm(),
+            DirectCostForm(),
+            TreatmentForm(),
+        )
+        decimal_fields = [
+            field
+            for form in forms
+            for field in form.fields.values()
+            if isinstance(field, ItalianDecimalField)
+        ]
+        self.assertEqual(len(decimal_fields), 12)
+        for field in decimal_fields:
+            with self.subTest(label=field.label):
+                self.assertEqual(field.clean("12,5"), field.clean("12.5"))
+                self.assertEqual(field.clean("12,5"), Decimal("12.5"))
+
+    def test_feasibility_choices_use_green_yellow_red_order(self):
+        expected = [
+            ("internal", "Fattibile internamente"),
+            ("to_check", "Da verificare"),
+            ("not_feasible", "Non fattibile"),
+        ]
+        self.assertEqual(list(QuoteItemForm().fields["feasibility"].choices), expected)
+        self.assertEqual(list(QuoteSummaryForm().fields["feasibility"].choices), expected)
+
     def test_disabled_supplementary_cost_is_preserved_but_not_calculated(self):
         form = QuoteItemForm(data={
             "code": self.item.code,
@@ -186,6 +229,129 @@ class ClientAndLanTests(TestCase):
         self.assertEqual(quote.client_contact, "Mario Rossi")
         self.assertEqual(quote.client_email, "mario@example.com")
 
+    def test_general_page_uses_only_registered_contacts(self):
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("quotes:create"))
+        self.assertContains(response, "L’elenco contiene solo i referenti del cliente selezionato.")
+        self.assertContains(response, "Nuovo referente")
+        self.assertNotContains(response, "Inserimento libero")
+        self.assertNotContains(response, "Cliente selezionato:")
+        self.assertContains(response, 'name="client_contact"', html=False)
+        self.assertContains(response, 'type="hidden"', html=False)
+
+    def test_wizard_success_message_is_a_dismissible_toast(self):
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("quotes:create"), {
+            "date": "2026-07-23",
+            "client_lookup": self.client_record.name,
+            "client": self.client_record.pk,
+            "contact_id": self.contact.pk,
+            "client_contact": "",
+            "client_email": "",
+            "internal_notes": "",
+            "customer_notes": "",
+        }, follow=True)
+        self.assertContains(response, "Dati generali salvati.")
+        self.assertContains(response, "toast-region")
+        self.assertContains(response, "data-dismiss-toast")
+
+    def test_articles_page_separates_essential_and_optional_information(self):
+        quote = Quote.objects.create(author=self.user)
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("quotes:items", args=[quote.pk]))
+        self.assertContains(response, "<h1>2. Articoli</h1>", html=True)
+        self.assertContains(response, "sticky-actions wizard-actions")
+        self.assertContains(response, "Informazioni principali")
+        self.assertContains(response, "Dettagli tecnici aggiuntivi")
+        self.assertContains(response, "Costi supplementari facoltativi")
+        self.assertContains(response, "Materiale principale del pezzo")
+        self.assertContains(response, "article-core-fields")
+        self.assertContains(response, "article-description-panel")
+        self.assertContains(response, '<textarea name="description"', html=False)
+        self.assertNotContains(response, "(non conteggiato)")
+        work_response = self.client.get(reverse("quotes:work", args=[quote.pk]))
+        self.assertContains(
+            work_response,
+            "<h1>3. Lavorazioni</h1>",
+            html=True,
+        )
+        self.assertContains(work_response, "sticky-actions wizard-actions")
+        summary_response = self.client.get(reverse("quotes:summary", args=[quote.pk]))
+        self.assertContains(
+            summary_response,
+            "<h1>4. Riepilogo e fattibilità</h1>",
+            html=True,
+        )
+        self.assertContains(summary_response, "sticky-actions wizard-actions wizard-actions--single")
+
+    def test_edit_page_restores_the_registered_contact(self):
+        quote = Quote.objects.create(
+            author=self.user,
+            client=self.client_record,
+            client_contact=self.contact.name,
+            client_email=self.contact.email,
+        )
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("quotes:general", args=[quote.pk]))
+        self.assertContains(response, f"Preventivo {quote.number}")
+        self.assertContains(response, "<h1>1. Dati generali</h1>", html=True)
+        self.assertContains(response, "Cliente, referente e note generali del preventivo.")
+        self.assertContains(response, "general-workspace")
+        self.assertContains(response, "sticky-actions wizard-actions")
+        self.assertContains(response, 'form="quote-general-form"', html=False)
+        self.assertContains(response, f'name="contact_id" value="{self.contact.pk}"', html=False)
+        self.assertContains(response, f'value="{self.client_record.name}"', html=False)
+
+    def test_quick_contact_is_linked_to_selected_client(self):
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("quotes:client_contact_quick_add"), {
+            "quick-contact-client": self.client_record.pk,
+            "quick-contact-name": "Luisa Bianchi",
+            "quick-contact-email": "luisa@example.com",
+            "quick-contact-phone": "02 123456",
+        })
+        self.assertEqual(response.status_code, 200)
+        contact = ClientContact.objects.get(name="Luisa Bianchi")
+        self.assertEqual(contact.client, self.client_record)
+        self.assertEqual(response.json()["contact"]["client_id"], self.client_record.pk)
+
+    def test_quick_contact_rejects_case_insensitive_duplicates_for_same_client(self):
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("quotes:client_contact_quick_add"), {
+            "quick-contact-client": self.client_record.pk,
+            "quick-contact-name": "mario rossi",
+            "quick-contact-email": "diversa@example.com",
+            "quick-contact-phone": "",
+        })
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("già un referente", response.json()["errors"]["name"][0])
+
+        response = self.client.post(reverse("quotes:client_contact_quick_add"), {
+            "quick-contact-client": self.client_record.pk,
+            "quick-contact-name": "Nome Diverso",
+            "quick-contact-email": "MARIO@example.com",
+            "quick-contact-phone": "",
+        })
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("già associata", response.json()["errors"]["email"][0])
+
+    def test_unselected_contact_cannot_be_supplied_as_free_text(self):
+        self.client.force_login(self.user)
+        response = self.client.post(reverse("quotes:create"), {
+            "date": "2026-07-23",
+            "client_lookup": self.client_record.name,
+            "client": self.client_record.pk,
+            "contact_id": "",
+            "client_contact": "Referente inventato",
+            "client_email": "inventato@example.com",
+            "internal_notes": "",
+            "customer_notes": "",
+        })
+        quote = Quote.objects.get(author=self.user)
+        self.assertRedirects(response, reverse("quotes:items", args=[quote.pk]))
+        self.assertEqual(quote.client_contact, "")
+        self.assertEqual(quote.client_email, "")
+
     def test_lan_request_is_detected_and_access_follows_ip_decision(self):
         self.client.force_login(self.user)
         response = self.client.get(reverse("quotes:dashboard"), REMOTE_ADDR="192.168.1.25")
@@ -203,6 +369,83 @@ class ClientAndLanTests(TestCase):
         response = self.client.get(reverse("quotes:dashboard"), REMOTE_ADDR="192.168.1.25")
         self.assertEqual(response.status_code, 403)
         self.assertContains(response, "Questo PC non è autorizzato", status_code=403)
+
+    def test_console_stop_requires_one_server_confirmation(self):
+        handlers = {}
+
+        class FakeServer:
+            def __init__(self):
+                self.closed = False
+
+            def run(self):
+                try:
+                    handlers[signal.SIGINT](signal.SIGINT, None)
+                except SystemExit:
+                    pass
+
+            def close(self):
+                self.closed = True
+
+        fake_server = FakeServer()
+
+        def register_handler(signal_number, handler):
+            handlers[signal_number] = handler
+
+        with (
+            patch("waitress.create_server", return_value=fake_server),
+            patch("config.lan_server.enable_console_ctrl_c"),
+            patch("config.lan_server.signal.signal", side_effect=register_handler),
+            patch("builtins.input", return_value="s"),
+        ):
+            self.assertEqual(run_lan_server(), 130)
+        self.assertTrue(fake_server.closed)
+
+        batch = Path("scripts/start_lan.bat").read_text(encoding="utf-8")
+        self.assertIn('start "" /b ".venv\\Scripts\\python.exe" -m config.lan_server', batch)
+        self.assertNotIn("/wait", batch.casefold())
+        self.assertNotIn("choice ", batch.casefold())
+
+    def test_rejected_console_stop_keeps_server_running_until_confirmed(self):
+        self.assertTrue(stop_confirmed("s"))
+        self.assertTrue(stop_confirmed("sì"))
+        self.assertFalse(stop_confirmed("n"))
+        self.assertFalse(stop_confirmed(""))
+
+        handlers = {}
+        states_after_each_answer = []
+
+        class FakeServer:
+            def __init__(self):
+                self.closed = False
+
+            def run(self):
+                handlers[signal.SIGINT](signal.SIGINT, None)
+                states_after_each_answer.append(self.closed)
+                try:
+                    handlers[signal.SIGINT](signal.SIGINT, None)
+                except SystemExit:
+                    pass
+
+            def close(self):
+                self.closed = True
+
+        fake_server = FakeServer()
+        with (
+            patch("waitress.create_server", return_value=fake_server),
+            patch("config.lan_server.enable_console_ctrl_c"),
+            patch(
+                "config.lan_server.signal.signal",
+                side_effect=lambda signal_number, handler: handlers.__setitem__(signal_number, handler),
+            ),
+            patch("builtins.input", side_effect=("n", "s")),
+        ):
+            self.assertEqual(run_lan_server(), 130)
+        self.assertEqual(states_after_each_answer, [False])
+        self.assertTrue(fake_server.closed)
+
+    def test_console_ctrl_c_enablement_is_safe_outside_windows(self):
+        with patch("config.lan_server.os.name", "posix"):
+            self.assertIsNone(enable_console_ctrl_c())
 
     def test_lan_request_is_detected_on_company_network_with_public_ipv4(self):
         remote_ip = "194.150.150.50"

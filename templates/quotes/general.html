@@ -1,36 +1,65 @@
 {% extends "base.html" %}
 {% block content %}
 {% include "quotes/_steps.html" %}
-<div class="page-heading"><div><h1>1. Dati generali</h1><p>{% if quote %}{{ quote.number }}{% else %}Il numero verra assegnato automaticamente al salvataggio.{% endif %}</p></div></div>
+<div class="general-workspace">
+<div class="page-heading section-heading"><div><span class="eyebrow">{% if quote %}Preventivo {{ quote.number }}{% else %}Nuovo preventivo{% endif %}</span><h1>1. Dati generali</h1><p>{% if quote %}Cliente, referente e note generali del preventivo.{% else %}Il numero verrà assegnato automaticamente al primo salvataggio.{% endif %}</p></div></div>
 {% if quote.status == "archived" %}<div class="alert warning"><strong>Preventivo archiviato:</strong> i dati sono disponibili in sola lettura. Duplica il preventivo dal riepilogo per modificarli.</div>{% endif %}
-<form method="post" class="card stacked-form" data-client-general>{% csrf_token %}
+
+<form id="quote-general-form" method="post" class="card stacked-form general-form-card" data-client-general>{% csrf_token %}
   {% if quote.status == "archived" %}<fieldset disabled class="read-only-fields">{% endif %}
-  {{ form.client }}{{ form.contact_id }}
-  <div class="form-grid general-fields">
-    <div class="field field-date {% if form.date.errors %}has-error{% endif %}"><label for="{{ form.date.id_for_label }}">{{ form.date.label }}</label>{{ form.date }}{% if form.date.errors %}<div class="field-error">{{ form.date.errors }}</div>{% endif %}</div>
-    <div class="field field-client_lookup {% if form.client_lookup.errors or form.client.errors %}has-error{% endif %}">
-      <label for="{{ form.client_lookup.id_for_label }}">Cliente</label>
-      <div class="autocomplete">
-        <div class="inline-input-action">{{ form.client_lookup }}{% if quote.status != "archived" %}<button class="button secondary" type="button" data-open-client-dialog>Nuovo cliente</button>{% endif %}</div>
-        <ul id="client-results" class="autocomplete-results" role="listbox" data-client-results hidden></ul>
+  {{ form.client }}{{ form.contact_id }}{{ form.client_contact }}{{ form.client_email }}
+
+  <section class="general-form-section general-form-section--primary" aria-labelledby="general-main-title">
+    <div class="general-section-heading"><div><span class="eyebrow">Informazioni principali</span><h2 id="general-main-title">Cliente e data</h2></div><p>Seleziona un cliente registrato oppure creane uno nuovo.</p></div>
+    <div class="general-main-grid">
+      <div class="field field-date {% if form.date.errors %}has-error{% endif %}">
+        <label for="{{ form.date.id_for_label }}">{{ form.date.label }} <span aria-label="obbligatorio">*</span></label>
+        {{ form.date }}
+        {% for error in form.date.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
       </div>
-      <div class="selected-client" data-selected-client hidden><span>Cliente selezionato: <strong data-selected-client-name></strong></span>{% if quote.status != "archived" %}<button type="button" class="text-button" data-clear-client>Rimuovi selezione</button>{% endif %}</div>
-      {% if form.client_lookup.errors %}<div class="field-error">{{ form.client_lookup.errors }}</div>{% endif %}{% if form.client.errors %}<div class="field-error">{{ form.client.errors }}</div>{% endif %}
-      <small class="field-help">Scrivi per cercare tra i clienti già registrati.</small>
+      <div class="field field-client_lookup {% if form.client_lookup.errors or form.client.errors %}has-error{% endif %}">
+        <label for="{{ form.client_lookup.id_for_label }}">Cliente</label>
+        <div class="autocomplete">
+          <div class="inline-input-action general-control-row">
+            {{ form.client_lookup }}
+            {% if quote.status != "archived" %}<button class="button secondary" type="button" data-open-client-dialog>Nuovo cliente</button>{% endif %}
+          </div>
+          <ul id="client-results" class="autocomplete-results" role="listbox" data-client-results hidden></ul>
+        </div>
+        {% for error in form.client_lookup.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
+        {% for error in form.client.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
+        <small class="field-help">Scrivi ragione sociale, email o telefono e scegli il risultato dall’elenco.</small>
+      </div>
     </div>
-    <div class="field field-contact-select">
+  </section>
+
+  <section class="general-form-section" aria-labelledby="general-contact-title">
+    <div class="general-section-heading"><div><span class="eyebrow">Contatto del preventivo</span><h2 id="general-contact-title">Referente</h2></div><p>L’elenco contiene solo i referenti del cliente selezionato.</p></div>
+    <div class="field field-contact-select {% if form.client_contact.errors or form.client_email.errors %}has-error{% endif %}">
       <label for="contact-select">Referente registrato</label>
-      <select id="contact-select" data-contact-select><option value="">Inserimento libero</option></select>
+      <div class="inline-input-action general-control-row">
+        <select id="contact-select" data-contact-select disabled><option value="">Seleziona prima un cliente</option></select>
+        {% if quote.status != "archived" %}<button class="button secondary" type="button" data-open-contact-dialog disabled>Nuovo referente</button>{% endif %}
+      </div>
       <small class="field-help" data-contact-state>Seleziona prima un cliente.</small>
+      {% for error in form.client_contact.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
+      {% for error in form.client_email.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
     </div>
-    <div class="field {% if form.client_contact.errors %}has-error{% endif %}"><label for="{{ form.client_contact.id_for_label }}">{{ form.client_contact.label }}</label>{{ form.client_contact }}{% if form.client_contact.errors %}<div class="field-error">{{ form.client_contact.errors }}</div>{% endif %}</div>
-    <div class="field {% if form.client_email.errors %}has-error{% endif %}"><label for="{{ form.client_email.id_for_label }}">{{ form.client_email.label }}</label>{{ form.client_email }}{% if form.client_email.errors %}<div class="field-error">{{ form.client_email.errors }}</div>{% endif %}</div>
-    <div class="field full {% if form.internal_notes.errors %}has-error{% endif %}"><label for="{{ form.internal_notes.id_for_label }}">{{ form.internal_notes.label }}</label>{{ form.internal_notes }}{% if form.internal_notes.errors %}<div class="field-error">{{ form.internal_notes.errors }}</div>{% endif %}</div>
-    <div class="field full {% if form.customer_notes.errors %}has-error{% endif %}"><label for="{{ form.customer_notes.id_for_label }}">{{ form.customer_notes.label }}</label>{{ form.customer_notes }}{% if form.customer_notes.errors %}<div class="field-error">{{ form.customer_notes.errors }}</div>{% endif %}</div>
-  </div>
+  </section>
+
+  <details class="general-notes" {% if form.internal_notes.value or form.customer_notes.value or form.internal_notes.errors or form.customer_notes.errors %}open{% endif %}>
+    <summary><span><strong>Note del preventivo</strong><small>Informazioni facoltative, interne o visibili al cliente</small></span></summary>
+    <div class="general-notes-grid">
+      <div class="field {% if form.internal_notes.errors %}has-error{% endif %}"><label for="{{ form.internal_notes.id_for_label }}">{{ form.internal_notes.label }}</label>{{ form.internal_notes }}{% for error in form.internal_notes.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}</div>
+      <div class="field {% if form.customer_notes.errors %}has-error{% endif %}"><label for="{{ form.customer_notes.id_for_label }}">{{ form.customer_notes.label }}</label>{{ form.customer_notes }}{% for error in form.customer_notes.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}</div>
+    </div>
+  </details>
+
   {% if quote.status == "archived" %}</fieldset>{% endif %}
-  <div class="form-actions"><a class="button secondary" href="{% url 'quotes:dashboard' %}">Indietro</a>{% if quote.status == "archived" %}<a class="button primary large" href="{% url 'quotes:summary' quote.pk %}">Vai al riepilogo</a>{% else %}<button class="button primary large" type="submit">Salva e continua</button>{% endif %}</div>
 </form>
+<div class="form-actions sticky-actions wizard-actions"><a class="button secondary" href="{% url 'quotes:dashboard' %}">Indietro</a>{% if quote.status == "archived" %}<a class="button primary" href="{% url 'quotes:summary' quote.pk %}">Vai al riepilogo</a>{% else %}<button class="button primary" type="submit" form="quote-general-form">Salva e continua</button>{% endif %}</div>
+</div>
+
 {{ clients|json_script:"clients-data" }}
 {{ contacts|json_script:"contacts-data" }}
 {% if quote.status != "archived" %}
@@ -41,6 +70,16 @@
     <div class="form-grid">{% include "quotes/_form_fields.html" with form=quick_client_form %}</div>
     <div class="alert error" data-quick-client-errors hidden></div>
     <div class="form-actions"><button class="button secondary" type="button" data-close-client-dialog>Annulla</button><button class="button primary" type="submit">Registra e seleziona</button></div>
+  </form>
+</dialog>
+
+<dialog class="quick-dialog quick-contact-dialog" data-contact-dialog aria-labelledby="quick-contact-title">
+  <form method="post" action="{% url 'quotes:client_contact_quick_add' %}" data-quick-contact-form>
+    {% csrf_token %}
+    <div class="dialog-heading"><div><h2 id="quick-contact-title">Registra referente</h2><p>Il referente sarà associato a <strong data-contact-client-name></strong> e selezionato subito.</p></div><button type="button" class="dialog-close" data-close-contact-dialog aria-label="Chiudi">×</button></div>
+    <div class="form-grid">{% include "quotes/_form_fields.html" with form=quick_contact_form %}</div>
+    <div class="alert error" data-quick-contact-errors hidden></div>
+    <div class="form-actions"><button class="button secondary" type="button" data-close-contact-dialog>Annulla</button><button class="button primary" type="submit">Registra e seleziona</button></div>
   </form>
 </dialog>
 {% endif %}

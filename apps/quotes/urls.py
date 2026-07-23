@@ -9,6 +9,7 @@ urlpatterns = [
     path("preventivi/cerca/", views.quote_search, name="search"),
     path("preventivi/nuovo/", views.quote_general, name="create"),
     path("clienti/registrazione-rapida/", views.client_quick_add, name="client_quick_add"),
+    path("clienti/referenti/registrazione-rapida/", views.client_contact_quick_add, name="client_contact_quick_add"),
     path("preventivi/<int:pk>/dati/", views.quote_general, name="general"),
     path("preventivi/<int:pk>/articoli/", views.quote_items, name="items"),
     path("preventivi/<int:pk>/articoli/aggiungi/", views.item_add, name="item_add"),

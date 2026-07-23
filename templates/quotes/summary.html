@@ -3,7 +3,7 @@
 {% block content %}
 {% include "quotes/_steps.html" %}
 <div class="page-heading">
-  <div><span class="eyebrow">Preventivo {{ quote.number }}</span><h1>Riepilogo e fattibilità</h1><p>{{ quote.client|default:"Cliente non indicato" }}</p></div>
+  <div><span class="eyebrow">Preventivo {{ quote.number }}</span><h1>4. Riepilogo e fattibilità</h1><p>{{ quote.client|default:"Cliente non indicato" }}</p></div>
   <span class="status large-status {{ quote.status_css_class }}">{{ quote.display_status }}</span>
 </div>
 
@@ -71,5 +71,5 @@
     </section>
   </aside>
 </div>
-<div class="form-actions"><a class="button secondary" href="{% url 'quotes:work' quote.pk %}">Indietro</a></div>
+<div class="form-actions sticky-actions wizard-actions wizard-actions--single"><a class="button secondary" href="{% url 'quotes:work' quote.pk %}">Indietro</a></div>
 {% endblock %}

@@ -45,6 +45,8 @@ La porta deve essere autorizzata nel firewall Windows/aziendale da un amministra
 
 `start_lan.bat` prepara automaticamente database e file statici e, al primo avvio, genera una chiave privata in `dati\django_secret_key.txt`. Il file viene riutilizzato agli avvii successivi e non va condiviso. Non è più necessario impostare manualmente `DJANGO_SECRET_KEY`; una variabile di sistema già presente continua comunque ad avere precedenza.
 
+Il server resta nella stessa finestra dello script. Con `CTRL+C` viene chiesto una sola volta se interrompere il server: rispondendo `S` si chiudono server e finestra, mentre rispondendo `N` entrambi restano attivi. Non viene mostrata una seconda conferma relativa al batch.
+
 Durante l'avvio vengono eliminate soltanto le sessioni scadute o firmate con una vecchia chiave. In questo modo un browser con una sessione non più valida torna alla pagina di accesso senza produrre avvisi ripetuti; le sessioni valide restano conservate.
 
 ```powershell

@@ -4,7 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required, permission_required
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Q
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -12,7 +12,8 @@ from django.views.decorators.http import require_POST
 
 from .forms import (
     DirectCostForm, ItemMaterialEditForm, ItemMaterialForm, PhaseForm, QuickClientForm,
-    QuoteGeneralForm, QuoteItemForm, QuoteSearchForm, QuoteSummaryForm, TimeOperationForm, TreatmentForm,
+    QuickClientContactForm, QuoteGeneralForm, QuoteItemForm, QuoteSearchForm, QuoteSummaryForm,
+    TimeOperationForm, TreatmentForm,
 )
 from apps.catalog.models import Client, ClientContact, Material
 from .models import DirectCost, ExternalTreatment, Feasibility, ItemMaterial, ItemPhase, Quote, QuoteItem, TimeOperation
@@ -123,6 +124,7 @@ def quote_general(request: HttpRequest, pk: int | None = None) -> HttpResponse:
         "clients": list(Client.objects.filter(active=True).values("id", "name", "email", "phone")),
         "contacts": contacts,
         "quick_client_form": QuickClientForm(prefix="quick-client"),
+        "quick_contact_form": QuickClientContactForm(prefix="quick-contact"),
     })
 
 
@@ -142,6 +144,35 @@ def client_quick_add(request: HttpRequest) -> JsonResponse:
         "ok": True,
         "client": {"id": client.pk, "name": client.name, "email": client.email, "phone": client.phone},
         "contact": ({"id": contact.pk, "name": contact.name, "email": contact.email} if contact else None),
+    })
+
+
+@login_required
+@permission_required("catalog.add_clientcontact", raise_exception=True)
+@require_POST
+def client_contact_quick_add(request: HttpRequest) -> JsonResponse:
+    form = QuickClientContactForm(request.POST, prefix="quick-contact")
+    if not form.is_valid():
+        return JsonResponse(
+            {"ok": False, "errors": {name: list(errors) for name, errors in form.errors.items()}},
+            status=422,
+        )
+    try:
+        contact = form.save()
+    except IntegrityError:
+        return JsonResponse(
+            {"ok": False, "errors": {"name": ["Il referente risulta già registrato per questo cliente."]}},
+            status=422,
+        )
+    return JsonResponse({
+        "ok": True,
+        "contact": {
+            "id": contact.pk,
+            "client_id": contact.client_id,
+            "name": contact.name,
+            "email": contact.email,
+            "phone": contact.phone,
+        },
     })
 
 

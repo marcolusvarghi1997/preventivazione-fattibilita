@@ -1,0 +1,65 @@
+{% for hidden in item_form.hidden_fields %}{{ hidden }}{% endfor %}
+{% if item_form.non_field_errors %}<div class="field-error full" role="alert">{{ item_form.non_field_errors }}</div>{% endif %}
+
+<section class="article-section article-section--essential">
+  <div class="article-section-heading">
+    <div><span class="eyebrow">Informazioni principali</span><h2>Identificazione articolo</h2></div>
+    <p>Codice, quantità e descrizione sono i dati usati più spesso.</p>
+  </div>
+  <div class="article-primary-grid">
+    <div class="article-core-fields">
+      {% include "quotes/_field.html" with field=item_form.code %}
+      {% include "quotes/_field.html" with field=item_form.quantity %}
+      {% include "quotes/_field.html" with field=item_form.feasibility %}
+    </div>
+    <div class="article-description-panel">
+      {% include "quotes/_field.html" with field=item_form.description %}
+    </div>
+  </div>
+</section>
+
+{% if material_form %}
+<section class="article-section piece-section article-section--material">
+  {% for hidden in material_form.hidden_fields %}{{ hidden }}{% endfor %}
+  {% if material_form.non_field_errors %}<div class="field-error full" role="alert">{{ material_form.non_field_errors }}</div>{% endif %}
+  <div class="article-section-heading">
+    <div><span class="eyebrow">Dato necessario</span><h2>Materiale principale del pezzo</h2></div>
+    <p>Il costo proposto dal catalogo resta modificabile per questo preventivo.</p>
+  </div>
+  <div class="article-material-grid">
+    {% include "quotes/_field.html" with field=material_form.material %}
+    {% include "quotes/_field.html" with field=material_form.weight_kg %}
+    {% include "quotes/_field.html" with field=material_form.unit_cost_snapshot %}
+  </div>
+</section>
+{% endif %}
+
+<details class="article-secondary" {% if item_form.revision.errors or item_form.dimensions.errors or item_form.technical_notes.errors %}open{% endif %}>
+  <summary><span><strong>Dettagli tecnici aggiuntivi</strong><small>Revisione, dimensioni e note tecniche</small></span></summary>
+  <div class="article-secondary-grid">
+    {% include "quotes/_field.html" with field=item_form.revision %}
+    {% include "quotes/_field.html" with field=item_form.dimensions %}
+    {% include "quotes/_field.html" with field=item_form.technical_notes %}
+  </div>
+</details>
+
+<details class="article-secondary article-extras" {% if item_form.external_purchases.errors or item_form.external_purchases_cost.errors or item_form.external_work.errors or item_form.external_work_cost.errors or item_form.bureaucracy.errors or item_form.bureaucracy_cost.errors %}open{% endif %}>
+  <summary><span><strong>Costi supplementari facoltativi</strong><small>Attivali solo quando fanno parte dell’articolo</small></span></summary>
+  <div class="extra-cost-grid">
+    <div class="extra-cost-card">
+      <label class="extra-cost-toggle" for="{{ item_form.external_purchases.id_for_label }}">{{ item_form.external_purchases }}<span><strong>{{ item_form.external_purchases.label }}</strong><small>Forniture acquistate esternamente</small></span></label>
+      {% for error in item_form.external_purchases.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
+      {% include "quotes/_field.html" with field=item_form.external_purchases_cost %}
+    </div>
+    <div class="extra-cost-card">
+      <label class="extra-cost-toggle" for="{{ item_form.external_work.id_for_label }}">{{ item_form.external_work }}<span><strong>{{ item_form.external_work.label }}</strong><small>Operazioni affidate a terzi</small></span></label>
+      {% for error in item_form.external_work.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
+      {% include "quotes/_field.html" with field=item_form.external_work_cost %}
+    </div>
+    <div class="extra-cost-card">
+      <label class="extra-cost-toggle" for="{{ item_form.bureaucracy.id_for_label }}">{{ item_form.bureaucracy }}<span><strong>{{ item_form.bureaucracy.label }}</strong><small>Certificazioni e pratiche richieste</small></span></label>
+      {% for error in item_form.bureaucracy.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
+      {% include "quotes/_field.html" with field=item_form.bureaucracy_cost %}
+    </div>
+  </div>
+</details>

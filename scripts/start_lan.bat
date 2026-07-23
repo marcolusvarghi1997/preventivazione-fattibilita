@@ -15,7 +15,6 @@ if errorlevel 1 (
 )
 
 set "DJANGO_DEBUG=False"
-set "LAN_SCRIPT_ACTIVE=True"
 if not defined DJANGO_ALLOWED_HOSTS set "DJANGO_ALLOWED_HOSTS=*"
 
 if not defined DJANGO_SECRET_KEY (
@@ -82,12 +81,9 @@ if /I "%~1"=="--check" (
   exit /b 0
 )
 
-echo Premere CTRL+C per arrestare.
-".venv\Scripts\waitress-serve.exe" --listen=0.0.0.0:%SERVER_PORT% --threads=8 config.wsgi:application
-if errorlevel 1 (
-  echo ERRORE: il server Waitress si e arrestato in modo anomalo.
-  goto :startup_error
-)
+echo CTRL+C chiede una sola conferma per interrompere il server.
+echo Rispondendo S si chiudera anche questa finestra; rispondendo N il server restera attivo.
+start "" /b ".venv\Scripts\python.exe" -m config.lan_server
 exit /b 0
 
 :check_port
