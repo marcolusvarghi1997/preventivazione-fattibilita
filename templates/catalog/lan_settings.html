@@ -2,37 +2,68 @@
 {% block title %}Gestione LAN{% endblock %}
 {% block content %}
 <div class="page-heading">
-  <div><span class="eyebrow">Solo superadmin</span><h1>Gestione rete locale</h1><p>Controlla da qui l'accesso degli altri dispositivi senza riavviare il server.</p></div>
-  <span class="status large-status {% if configuration.lan_enabled %}completed{% else %}draft{% endif %}">{% if configuration.lan_enabled %}LAN attiva{% else %}LAN disattivata{% endif %}</span>
+  <div><span class="eyebrow">Solo superadmin</span><h1>Gestione rete locale</h1><p>Autorizza o blocca ogni PC rilevato, con effetto immediato.</p></div>
+  <div class="page-heading-status"><span class="status large-status {% if pending_count %}draft{% else %}completed{% endif %}">{% if pending_count %}{{ pending_count }} in attesa{% else %}Nessuna richiesta in attesa{% endif %}</span></div>
 </div>
 
 <div class="lan-layout">
-  <section class="card lan-control" aria-labelledby="lan-control-title">
-    <span class="eyebrow">Accesso remoto</span>
-    <h2 id="lan-control-title">{% if configuration.lan_enabled %}Gli altri PC possono collegarsi{% else %}Gli altri PC sono bloccati{% endif %}</h2>
-    <p>{% if configuration.lan_enabled %}Il server accetta le richieste provenienti dalla rete locale. Restano necessari un utente autorizzato e la password.{% else %}Solo questo PC può usare l'applicazione. Puoi abilitare la rete quando serve.{% endif %}</p>
-    <form method="post" class="lan-toggle-form">{% csrf_token %}
-      <label class="switch-control" for="{{ form.lan_enabled.id_for_label }}">{{ form.lan_enabled }}<span><strong>{{ form.lan_enabled.label }}</strong><small>La modifica ha effetto immediato e non richiede il riavvio.</small></span></label>
-      {% for error in form.lan_enabled.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
-      <button class="button primary large" type="submit">Salva impostazione LAN</button>
-    </form>
+  <section class="card lan-control" aria-labelledby="lan-access-title">
+    <span class="eyebrow">Controllo accessi</span>
+    <h2 id="lan-access-title">PC rilevati</h2>
+    <p>“Sì” consente l’uso dell’applicazione da quell’IP; “No” lo blocca. Ogni utente dovrà comunque accedere con le proprie credenziali.</p>
+    {% if lan_devices %}
+      <div class="table-wrap lan-access-table">
+        <table>
+          <thead><tr><th>Indirizzo IP</th><th>Stato</th><th>Prima richiesta</th><th>Ultima richiesta</th><th>Accesso</th></tr></thead>
+          <tbody>
+            {% for device in lan_devices %}
+              <tr>
+                <td><strong><code>{{ device.ip_address }}</code></strong>{% if device.ip_address == current_ip %}<small class="current-device-label">Questo PC</small>{% endif %}</td>
+                <td><span class="status {% if device.status == 'allowed' %}completed{% elif device.status == 'denied' %}rejected{% else %}draft{% endif %}">{{ device.get_status_display }}</span></td>
+                <td>{{ device.first_seen_at|date:"d/m/Y H:i" }}</td>
+                <td>{{ device.last_seen_at|date:"d/m/Y H:i" }}<small>{{ device.request_count }} richiest{{ device.request_count|pluralize:"a,e" }} rilevat{{ device.request_count|pluralize:"a,e" }}</small></td>
+                <td>
+                  <div class="lan-action-group">
+                    <form method="post" action="{% url 'catalog:decide_lan_access' device.pk %}" class="lan-decision-form">{% csrf_token %}
+                      <button class="button success small" type="submit" name="decision" value="allow" {% if device.status == 'allowed' %}disabled{% endif %}>Sì</button>
+                      <button class="button danger small" type="submit" name="decision" value="deny" {% if device.status == 'denied' %}disabled{% endif %}>No</button>
+                    </form>
+                    <form method="post" action="{% url 'catalog:delete_lan_access' device.pk %}" data-confirm="Rimuovere la richiesta del dispositivo {{ device.ip_address }}? Se il PC si collegherà di nuovo verrà creata una nuova richiesta.">{% csrf_token %}
+                      <button class="button danger small" type="submit">Rimuovi</button>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="empty-state"><h3>Nessun PC remoto rilevato</h3><p>Apri l’indirizzo indicato sopra da un altro PC: la richiesta comparirà automaticamente qui.</p></div>
+    {% endif %}
   </section>
 
   <aside class="summary-stack">
     <section class="card summary-card">
-      <span class="eyebrow">Server</span><h2>Stato dell'avvio</h2>
-      <dl class="data-grid lan-data-grid">
-        <div><dt>Modalità</dt><dd>{% if lan_script_active %}Script LAN{% else %}Avvio locale{% endif %}</dd></div>
-        <div><dt>Porta</dt><dd>{{ server_port }}</dd></div>
+      <span class="eyebrow">Server</span><h2>Informazioni di rete</h2>
+      <dl class="data-grid lan-data-grid readonly-network-info" aria-label="Informazioni di rete in sola lettura">
+        <div><dt>IP del server</dt><dd>{% if server_ip %}<code>{{ server_ip }}</code>{% else %}Non rilevato{% endif %}</dd></div>
+        <div><dt>Porta</dt><dd><code>{{ server_port }}</code></dd></div>
+        <div class="network-url-row"><dt>Indirizzo completo</dt><dd>{% if primary_lan_url %}<code>{{ primary_lan_url }}</code>{% else %}Non disponibile{% endif %}</dd></div>
       </dl>
-      {% if not lan_script_active %}<p class="field-help">La gestione resta disponibile anche con l'avvio locale; l'accesso remoto dipende esclusivamente dall'interruttore sopra.</p>{% endif %}
+      <p class="field-help">Queste informazioni sono rilevate automaticamente e non sono modificabili da questa pagina.</p>
     </section>
+    {% if lan_urls|length > 1 %}
+      <section class="card summary-card">
+        <span class="eyebrow">Altre schede di rete</span><h2>Indirizzi alternativi</h2>
+        <ul class="network-addresses">{% for url in lan_urls %}{% if url != primary_lan_url %}<li><code>{{ url }}</code><button class="button secondary small" type="button" data-copy-text="{{ url }}">Copia</button></li>{% endif %}{% endfor %}</ul>
+      </section>
+    {% endif %}
     <section class="card summary-card">
-      <span class="eyebrow">Collegamento</span><h2>Indirizzi per gli altri PC</h2>
-      {% if lan_urls %}<ul class="network-addresses">{% for url in lan_urls %}<li><code>{{ url }}</code><button class="button secondary small" type="button" data-copy-text="{{ url }}">Copia</button></li>{% endfor %}</ul>{% else %}<div class="alert warning">Nessun indirizzo IPv4 privato rilevato. Verifica che il PC sia collegato alla rete aziendale.</div>{% endif %}
-      <p class="field-help">Il firewall Windows deve consentire la porta {{ server_port }} sulla rete privata. Non esporre questa applicazione direttamente su Internet.</p>
+      <span class="eyebrow">Sicurezza</span><h2>Solo rete aziendale</h2>
+      <p class="field-help">Usa questo collegamento esclusivamente nella rete aziendale o tramite VPN. Il firewall deve consentire la porta {{ server_port }} solo sulle interfacce previste. Non esporre l’applicazione direttamente su Internet.</p>
     </section>
   </aside>
 </div>
-<div class="form-actions"><a class="button secondary" href="{% url 'quotes:dashboard' %}">Torna alla dashboard</a>{% if user.is_superuser %}<a class="button secondary" href="/admin/">Apri amministrazione</a>{% endif %}</div>
+<div class="form-actions"><a class="button secondary" href="{% url 'quotes:dashboard' %}">Torna alla dashboard</a><a class="button secondary" href="/admin/">Apri amministrazione</a></div>
 {% endblock %}

@@ -6,12 +6,6 @@
   <a class="button primary xlarge" href="{% url 'quotes:create' %}">Nuovo preventivo</a>
   <a class="button secondary xlarge" href="{% url 'quotes:search' %}">Cerca preventivo</a>
 </div>
-{% if user.is_superuser %}
-<section class="card superadmin-lan-card">
-  <div><span class="eyebrow">Solo superadmin</span><h2>Rete locale</h2><p>Accesso dagli altri dispositivi: <strong>{% if site_config.lan_enabled %}abilitato{% else %}disabilitato{% endif %}</strong>.</p></div>
-  <a class="button secondary large" href="{% url 'catalog:lan_settings' %}">Gestisci LAN</a>
-</section>
-{% endif %}
 <section class="card">
   <h2>Ultimi preventivi</h2>
   {% if quotes %}

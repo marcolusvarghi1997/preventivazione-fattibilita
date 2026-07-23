@@ -1,12 +1,14 @@
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import TestCase
 from django.urls import reverse
 
-from apps.catalog.models import Client, ClientContact, Material, PhaseDefinition, ProductionResource, SiteConfiguration
+from apps.catalog.models import Client, ClientContact, LanDeviceAccess, Material, PhaseDefinition, ProductionResource
+from apps.catalog.network import get_lan_ipv4_addresses
 from apps.quotes.formatting import format_decimal_it, format_money, format_weight, normalize_decimal_input
 from apps.quotes.forms import ItemMaterialEditForm, QuoteItemForm, QuoteSummaryForm
 from apps.quotes.models import ItemMaterial, ItemPhase, Quote, QuoteItem, TimeOperation
@@ -184,40 +186,176 @@ class ClientAndLanTests(TestCase):
         self.assertEqual(quote.client_contact, "Mario Rossi")
         self.assertEqual(quote.client_email, "mario@example.com")
 
-    def test_lan_toggle_blocks_and_allows_remote_address(self):
+    def test_lan_request_is_detected_and_access_follows_ip_decision(self):
         self.client.force_login(self.user)
-        config = SiteConfiguration.load()
-        config.lan_enabled = False
-        config.save()
-        self.assertEqual(self.client.get(reverse("quotes:dashboard"), REMOTE_ADDR="192.168.1.25").status_code, 403)
-        config.lan_enabled = True
-        config.save()
+        response = self.client.get(reverse("quotes:dashboard"), REMOTE_ADDR="192.168.1.25")
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, "Richiesta inviata al superadmin", status_code=403)
+
+        device = LanDeviceAccess.objects.get(ip_address="192.168.1.25")
+        self.assertEqual(device.status, LanDeviceAccess.Status.PENDING)
+        device.status = LanDeviceAccess.Status.ALLOWED
+        device.save(update_fields=("status",))
         self.assertEqual(self.client.get(reverse("quotes:dashboard"), REMOTE_ADDR="192.168.1.25").status_code, 200)
+
+        device.status = LanDeviceAccess.Status.DENIED
+        device.save(update_fields=("status",))
+        response = self.client.get(reverse("quotes:dashboard"), REMOTE_ADDR="192.168.1.25")
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, "Questo PC non è autorizzato", status_code=403)
+
+    def test_lan_request_is_detected_on_company_network_with_public_ipv4(self):
+        remote_ip = "194.150.150.50"
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("quotes:dashboard"), REMOTE_ADDR=remote_ip)
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(LanDeviceAccess.objects.filter(ip_address=remote_ip).exists())
+
+    def test_pending_anonymous_ip_cannot_open_or_submit_login(self):
+        remote_ip = "194.150.150.55"
+        remote_client = self.client_class()
+
+        self.assertEqual(
+            remote_client.get(reverse("quotes:dashboard"), REMOTE_ADDR=remote_ip).status_code,
+            403,
+        )
+        device = LanDeviceAccess.objects.get(ip_address=remote_ip)
+        self.assertEqual(device.status, LanDeviceAccess.Status.PENDING)
+        self.assertEqual(
+            remote_client.get(reverse("login"), REMOTE_ADDR=remote_ip).status_code,
+            403,
+        )
+        self.assertEqual(
+            remote_client.get(reverse("admin:login"), REMOTE_ADDR=remote_ip).status_code,
+            403,
+        )
+        denied_login = remote_client.post(
+            reverse("login"),
+            {"username": self.user.username, "password": "pass"},
+            REMOTE_ADDR=remote_ip,
+        )
+        self.assertEqual(denied_login.status_code, 403)
+        self.assertNotIn("_auth_user_id", remote_client.session)
 
     def test_lan_management_page_is_superuser_only(self):
         self.client.force_login(self.user)
         self.assertEqual(self.client.get(reverse("catalog:lan_settings")).status_code, 403)
-        self.assertEqual(self.client.post(reverse("catalog:lan_settings"), {"lan_enabled": "on"}).status_code, 403)
 
         self.client.force_login(self.superuser)
         response = self.client.get(reverse("catalog:lan_settings"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Gestione rete locale")
 
-        response = self.client.post(reverse("catalog:lan_settings"), {"lan_enabled": "on"})
-        self.assertRedirects(response, reverse("catalog:lan_settings"))
-        self.assertTrue(SiteConfiguration.load().lan_enabled)
+    def test_superuser_can_allow_and_revoke_a_detected_ip(self):
+        device = LanDeviceAccess.objects.create(
+            ip_address="192.168.1.40",
+            last_seen_at="2026-07-23T08:00:00Z",
+        )
+        decision_url = reverse("catalog:decide_lan_access", args=[device.pk])
 
-        self.client.post(reverse("catalog:lan_settings"), {})
-        self.assertFalse(SiteConfiguration.load().lan_enabled)
-
-    def test_lan_link_is_visible_only_in_superuser_dashboard(self):
         self.client.force_login(self.user)
-        self.assertNotContains(self.client.get(reverse("quotes:dashboard")), reverse("catalog:lan_settings"))
-        self.client.force_login(self.superuser)
-        self.assertContains(self.client.get(reverse("quotes:dashboard")), reverse("catalog:lan_settings"))
+        self.assertEqual(self.client.post(decision_url, {"decision": "allow"}).status_code, 403)
 
-    @override_settings(LAN_SCRIPT_ACTIVE=True)
-    def test_lan_page_reports_script_mode(self):
         self.client.force_login(self.superuser)
-        self.assertContains(self.client.get(reverse("catalog:lan_settings")), "Script LAN")
+        self.assertRedirects(
+            self.client.post(decision_url, {"decision": "allow"}),
+            reverse("catalog:lan_settings"),
+        )
+        device.refresh_from_db()
+        self.assertEqual(device.status, LanDeviceAccess.Status.ALLOWED)
+        self.assertEqual(device.decided_by, self.superuser)
+
+        self.client.post(decision_url, {"decision": "deny"})
+        device.refresh_from_db()
+        self.assertEqual(device.status, LanDeviceAccess.Status.DENIED)
+
+    def test_revoked_anonymous_ip_cannot_open_or_submit_login(self):
+        remote_ip = "194.150.150.61"
+        device = LanDeviceAccess.objects.create(
+            ip_address=remote_ip,
+            status=LanDeviceAccess.Status.ALLOWED,
+            last_seen_at="2026-07-23T08:00:00Z",
+        )
+        remote_client = self.client_class()
+
+        login_response = remote_client.post(
+            reverse("login"),
+            {"username": self.user.username, "password": "pass"},
+            REMOTE_ADDR=remote_ip,
+        )
+        self.assertEqual(login_response.status_code, 302)
+        remote_client.post(reverse("logout"), REMOTE_ADDR=remote_ip)
+
+        self.client.force_login(self.superuser)
+        self.client.post(
+            reverse("catalog:decide_lan_access", args=[device.pk]),
+            {"decision": "deny"},
+        )
+        device.refresh_from_db()
+        self.assertEqual(device.status, LanDeviceAccess.Status.DENIED)
+
+        self.assertEqual(
+            remote_client.get(reverse("login"), REMOTE_ADDR=remote_ip).status_code,
+            403,
+        )
+        denied_login = remote_client.post(
+            reverse("login"),
+            {"username": self.user.username, "password": "pass"},
+            REMOTE_ADDR=remote_ip,
+        )
+        self.assertEqual(denied_login.status_code, 403)
+        self.assertNotIn("_auth_user_id", remote_client.session)
+
+    def test_superuser_can_remove_a_lan_request(self):
+        device = LanDeviceAccess.objects.create(
+            ip_address="194.150.150.62",
+            last_seen_at="2026-07-23T08:00:00Z",
+        )
+        delete_url = reverse("catalog:delete_lan_access", args=[device.pk])
+
+        self.client.force_login(self.user)
+        self.assertEqual(self.client.post(delete_url).status_code, 403)
+        self.client.force_login(self.superuser)
+        self.assertRedirects(self.client.post(delete_url), reverse("catalog:lan_settings"))
+        self.assertFalse(LanDeviceAccess.objects.filter(pk=device.pk).exists())
+
+    def test_remote_superuser_can_open_lan_management_without_prior_approval(self):
+        remote_ip = "192.168.1.77"
+        self.client.force_login(self.superuser)
+        self.assertFalse(LanDeviceAccess.objects.filter(ip_address=remote_ip).exists())
+        self.assertEqual(
+            self.client.get(reverse("catalog:lan_settings"), REMOTE_ADDR=remote_ip).status_code,
+            200,
+        )
+        self.assertTrue(LanDeviceAccess.objects.filter(ip_address=remote_ip).exists())
+
+    @patch("apps.catalog.network.get_lan_ipv4_addresses", return_value=["192.168.1.10"])
+    def test_lan_page_shows_readonly_server_network_info(self, mocked_addresses):
+        self.client.force_login(self.superuser)
+        response = self.client.get(reverse("catalog:lan_settings"), HTTP_HOST="server.test:8765", SERVER_PORT="8765")
+        self.assertContains(response, "Informazioni di rete in sola lettura")
+        self.assertContains(response, "IP del server")
+        self.assertContains(response, "192.168.1.10")
+        self.assertContains(response, "<code>8765</code>", html=True)
+        self.assertContains(response, "http://192.168.1.10:8765")
+
+    def test_dashboard_does_not_show_lan_data(self):
+        self.client.force_login(self.superuser)
+        response = self.client.get(reverse("quotes:dashboard"))
+        self.assertNotContains(response, "Collegamento per gli altri PC")
+        self.assertNotContains(response, "Nessuna richiesta")
+
+    def test_lan_management_uses_admin_rete_url_only(self):
+        self.assertEqual(reverse("catalog:lan_settings"), "/admin/rete/")
+        self.client.force_login(self.superuser)
+        self.assertEqual(self.client.get("/admin/rete/").status_code, 200)
+        self.assertEqual(self.client.get("/superadmin/rete/").status_code, 404)
+
+    @patch("apps.catalog.network.socket.socket", side_effect=OSError)
+    @patch("apps.catalog.network.socket.getaddrinfo")
+    def test_public_ipv4_assigned_to_server_interface_is_not_discarded(self, mocked_getaddrinfo, mocked_socket):
+        mocked_getaddrinfo.return_value = [
+            (2, 1, 6, "", ("194.150.150.33", 0)),
+            (2, 1, 6, "", ("127.0.0.1", 0)),
+        ]
+        self.assertEqual(get_lan_ipv4_addresses(), ["194.150.150.33"])

@@ -27,20 +27,25 @@ Per configurazioni permanenti impostare le variabili d'ambiente illustrate in [.
 ## Avvio dell'applicazione
 
 ```powershell
-.\scripts\start_local.bat
+.\scripts\start_lan.bat
 ```
 
-Aprire `http://127.0.0.1:8000`. Il server è in ascolto anche sull'interfaccia di rete, ma il middleware applicativo blocca ogni dispositivo remoto finché il superadmin non abilita **Accesso dalla rete LAN**.
+È l’unico script di avvio: sul PC server si usa `http://127.0.0.1:8000`, mentre gli altri dispositivi usano l’indirizzo mostrato nella pagina dedicata **Gestione LAN**. Il middleware applicativo blocca ogni nuovo dispositivo remoto finché il superadmin non ne autorizza l’indirizzo IP.
 
 ## Accesso dalla rete locale
 
-1. Avviare normalmente l'applicazione oppure eseguire `scripts\start_lan.bat`.
-2. Accedere come superuser e aprire **Gestione LAN** dalla dashboard o dal menu superiore.
-3. Attivare o disattivare l'accesso dagli altri dispositivi e salvare.
+1. Avviare l'applicazione con `scripts\start_lan.bat`.
+2. Accedere come superuser e aprire **Gestione LAN** dal menu superiore oppure da `/admin/rete/`.
+3. Comunicare agli altri utenti l'indirizzo mostrato nella pagina **Gestione LAN**.
+4. Al primo collegamento del nuovo PC, aggiornare **Gestione LAN** e scegliere **Sì** o **No** accanto all'indirizzo IP rilevato.
 
-La pagina è disponibile soltanto al superadmin, mostra la modalità di avvio, la porta e gli indirizzi IPv4 rilevati. La modifica è immediata e non richiede riavvio né comandi. La porta deve essere autorizzata nel firewall Windows/aziendale da un amministratore. Non esporre l'app direttamente su Internet: usarla solo in LAN o tramite VPN.
+La pagina è disponibile soltanto al superadmin e può essere aperta anche da un PC remoto già autorizzato dopo aver eseguito l'accesso come superadmin. Mostra le richieste in attesa, gli IP autorizzati o bloccati e, in sola lettura, l'IP del server, la porta e l'indirizzo completo. Le decisioni hanno effetto immediato e non richiedono riavvio né comandi: soltanto un IP impostato su **Sì** può aprire o inviare il modulo di accesso; gli stati **In attesa** e **No** ricevono sempre un blocco. Una richiesta può essere rimossa; se quel PC si collega nuovamente, verrà rilevato come nuova richiesta in attesa. L'autorizzazione dell'IP non sostituisce il login: ogni persona deve comunque usare il proprio account.
+
+La porta deve essere autorizzata nel firewall Windows/aziendale da un amministratore e limitata alle interfacce previste. L'app riconosce anche reti aziendali che usano indirizzi IPv4 pubblici sulla scheda locale; non esporla direttamente su Internet, ma usarla solo in LAN o tramite VPN.
 
 `start_lan.bat` prepara automaticamente database e file statici e, al primo avvio, genera una chiave privata in `dati\django_secret_key.txt`. Il file viene riutilizzato agli avvii successivi e non va condiviso. Non è più necessario impostare manualmente `DJANGO_SECRET_KEY`; una variabile di sistema già presente continua comunque ad avere precedenza.
+
+Durante l'avvio vengono eliminate soltanto le sessioni scadute o firmate con una vecchia chiave. In questo modo un browser con una sessione non più valida torna alla pagina di accesso senza produrre avvisi ripetuti; le sessioni valide restano conservate.
 
 ```powershell
 $env:DJANGO_ALLOWED_HOSTS = "192.168.1.20,nome-pc-server"
@@ -55,7 +60,7 @@ Get-NetIPAddress -AddressFamily IPv4 | Where-Object { $_.IPAddress -notlike '127
 
 In presenza di HTTPS impostare `DJANGO_SECURE_COOKIES=True` e `DJANGO_CSRF_TRUSTED_ORIGINS=https://nome-server`.
 
-Gli script tentano prima la porta `8000`. Se Windows la riserva o un altro processo la occupa, passano automaticamente alla `8765` e mostrano nel terminale l'indirizzo effettivo. La porta può essere scelta esplicitamente impostando `SERVER_PORT`; in quel caso lo script non usa fallback e segnala chiaramente se non è disponibile.
+Lo script tenta prima la porta `8000`. Se Windows la riserva o un altro processo la occupa, passa automaticamente alla `8765` e mostra nel terminale l'indirizzo effettivo. La porta può essere scelta esplicitamente impostando `SERVER_PORT`; in quel caso lo script non usa fallback e segnala chiaramente se non è disponibile.
 
 Per controllare lo script senza lasciare il server in esecuzione: `scripts\start_lan.bat --check`.
 
@@ -63,7 +68,7 @@ Esempio di scelta manuale in PowerShell:
 
 ```powershell
 $env:SERVER_PORT = "8765"
-.\scripts\start_local.bat
+.\scripts\start_lan.bat
 ```
 
 ## Primo utilizzo e utenti
@@ -204,7 +209,7 @@ npm run test:playwright
 - `apps/reports`: PDF cliente separato dalle view operative;
 - `portable_launcher.py`: interfaccia desktop e ingresso per la compilazione Nuitka;
 - `templates` e `static`: interfaccia server-rendered e risorse locali;
-- `scripts`: setup, avvio locale/LAN e backup;
+- `scripts`: setup, avvio dell'applicazione e backup;
 - `tests`: calcoli, snapshot, validazioni, permessi, duplicazione, PDF, numerazione e seed.
 
 ## Estensioni future

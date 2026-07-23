@@ -31,13 +31,13 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
-    "apps.catalog.middleware.LanAccessMiddleware",
     "django.middleware.locale.LocaleMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "apps.catalog.middleware.LanAccessMiddleware",
 ]
 
 ROOT_URLCONF = "config.urls"
@@ -87,7 +87,7 @@ MEDIA_URL = "media/"
 MEDIA_ROOT = Path(os.getenv("MEDIA_ROOT", BASE_DIR / "media"))
 STORAGES = {"staticfiles": {"BACKEND": (
     "django.contrib.staticfiles.storage.StaticFilesStorage"
-    if DEBUG else "whitenoise.storage.CompressedManifestStaticFilesStorage"
+    if DEBUG else "config.storage.JazzminCompatibleManifestStaticFilesStorage"
 )}}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
@@ -122,7 +122,7 @@ JAZZMIN_SETTINGS = {
     "custom_links": {
         "catalog": [{
             "name": "Gestione LAN",
-            "url": "/superadmin/rete/",
+            "url": "/admin/rete/",
             "icon": "fas fa-network-wired",
         }],
     },

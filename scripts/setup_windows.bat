@@ -17,5 +17,5 @@ echo.
 echo Installazione completata.
 echo Se e la prima installazione, creare ora l'amministratore con:
 echo   .venv\Scripts\python.exe manage.py createsuperuser
-echo Poi avviare scripts\start_local.bat
+echo Poi avviare scripts\start_lan.bat
 endlocal

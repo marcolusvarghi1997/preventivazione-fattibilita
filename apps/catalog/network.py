@@ -4,8 +4,18 @@ from ipaddress import ip_address
 import socket
 
 
+def get_remote_ip(request) -> str:
+    """Restituisce l'IP del peer senza fidarsi di header inoltrati dal client."""
+    raw_address = request.META.get("REMOTE_ADDR", "127.0.0.1").split("%", 1)[0]
+    try:
+        return str(ip_address(raw_address))
+    except ValueError:
+        return raw_address
+
+
 def get_lan_ipv4_addresses() -> list[str]:
     candidates: set[str] = set()
+    preferred_address = None
     try:
         candidates.update(
             result[4][0]
@@ -17,7 +27,8 @@ def get_lan_ipv4_addresses() -> list[str]:
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as probe:
             probe.connect(("192.0.2.1", 80))
-            candidates.add(probe.getsockname()[0])
+            preferred_address = probe.getsockname()[0]
+            candidates.add(preferred_address)
     except OSError:
         pass
 
@@ -27,6 +38,30 @@ def get_lan_ipv4_addresses() -> list[str]:
             parsed = ip_address(candidate)
         except ValueError:
             continue
-        if parsed.version == 4 and parsed.is_private and not parsed.is_loopback and not parsed.is_link_local:
+        if (
+            parsed.version == 4
+            and not parsed.is_loopback
+            and not parsed.is_link_local
+            and not parsed.is_multicast
+            and not parsed.is_unspecified
+        ):
             addresses.append(str(parsed))
-    return sorted(set(addresses), key=lambda value: tuple(int(part) for part in value.split(".")))
+    addresses = sorted(set(addresses), key=lambda value: tuple(int(part) for part in value.split(".")))
+    if preferred_address in addresses:
+        addresses.remove(preferred_address)
+        addresses.insert(0, preferred_address)
+    return addresses
+
+
+def get_server_connection_info(request) -> dict:
+    """Compone in un solo punto IP, porta e URL mostrati nell'interfaccia."""
+    addresses = get_lan_ipv4_addresses()
+    port = request.get_port()
+    urls = [f"http://{address}:{port}" for address in addresses]
+    return {
+        "server_addresses": addresses,
+        "server_ip": addresses[0] if addresses else None,
+        "server_port": port,
+        "lan_urls": urls,
+        "primary_lan_url": urls[0] if urls else None,
+    }

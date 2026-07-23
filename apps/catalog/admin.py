@@ -3,7 +3,7 @@ from django.contrib import admin
 from django.utils.html import format_html
 from apps.quotes.admin_utils import ItalianDecimalAdminMixin
 from apps.quotes.formatting import format_money
-from .models import Client, ClientContact, Material, PhaseDefinition, ProductionResource, SiteConfiguration
+from .models import Client, ClientContact, LanDeviceAccess, Material, PhaseDefinition, ProductionResource, SiteConfiguration
 
 
 class ClientContactInline(admin.TabularInline):
@@ -69,6 +69,28 @@ class ProductionResourceAdmin(ItalianDecimalAdminMixin, admin.ModelAdmin):
         queryset.update(active=False)
 
 
+@admin.register(LanDeviceAccess)
+class LanDeviceAccessAdmin(admin.ModelAdmin):
+    list_display = ("ip_address", "status", "first_seen_at", "last_seen_at", "request_count", "decided_by")
+    list_filter = ("status",)
+    search_fields = ("ip_address",)
+    readonly_fields = (
+        "ip_address",
+        "status",
+        "first_seen_at",
+        "last_seen_at",
+        "request_count",
+        "decided_at",
+        "decided_by",
+    )
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+
 class SiteConfigurationAdminForm(forms.ModelForm):
     class Meta:
         model = SiteConfiguration
@@ -85,7 +107,7 @@ class SiteConfigurationAdmin(admin.ModelAdmin):
     fieldsets = (
         ("Identità visiva", {"fields": ("site_title", "company_name", "logo", "favicon", "primary_color", "accent_color")}),
         ("Dati aziendali per i PDF", {"fields": ("address", "vat", "email", "phone", "terms")}),
-        ("Rete locale", {"fields": ("lan_enabled", "updated_at"), "description": "L'impostazione ha effetto immediato e non richiede script o riavvii."}),
+        ("Aggiornamento", {"fields": ("updated_at",)}),
     )
     readonly_fields = ("updated_at",)
 

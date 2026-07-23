@@ -217,7 +217,8 @@ h3 { font-size: 1rem; line-height: 1.3; }
 .status.completed { border-color: #67a894; background: var(--brand-success-soft); color: #0b5b53; }
 .status.rejected { border-color: #d2928e; background: var(--brand-danger-soft); color: #7c1f1b; }
 .status.draft { border-color: #d8b343; background: var(--brand-warning-soft); color: var(--brand-warning); }
-.large-status { padding: 6px 10px; font-size: .86rem; }
+.page-heading-status { display: flex; align-self: stretch; align-items: center; justify-content: center; flex: 0 0 auto; }
+.large-status { min-height: 34px; justify-content: center; padding: 6px 10px; font-size: .86rem; line-height: 1.15; }
 
 .table-wrap { width: 100%; overflow-x: auto; border: 1px solid var(--brand-border); border-radius: var(--radius-sm); background: #fff; }
 table { width: 100%; border-collapse: collapse; }
@@ -328,16 +329,20 @@ tbody tr:hover { background: #fafafa; }
 .action-section:first-child { padding-top: 0; border-top: 0; }
 .action-section .button, .action-section form { width: 100%; }
 .action-section.danger-zone { margin-top: 8px; padding: 14px; border: 1px solid #d2928e; border-radius: var(--radius-sm); background: var(--brand-danger-soft); }
-.superadmin-lan-card { display: flex; align-items: center; justify-content: space-between; gap: 20px; border-left: 4px solid var(--brand-accent); }
-.superadmin-lan-card h2, .superadmin-lan-card p { margin-bottom: 3px; }
 .lan-layout { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(330px, .8fr); align-items: start; gap: 18px; }
 .lan-control { margin: 0; }
-.lan-toggle-form { display: grid; gap: 18px; margin-top: 22px; }
-.switch-control { display: flex; align-items: flex-start; gap: 13px; padding: 16px; border: 1px solid var(--brand-border); border-radius: var(--radius-sm); background: #fbfbfc; cursor: pointer; }
-.switch-control input { width: 22px; height: 22px; flex: 0 0 22px; margin: 1px 0 0; accent-color: var(--brand-accent); }
-.switch-control span, .switch-control strong, .switch-control small { display: block; }
-.switch-control small { margin-top: 3px; color: var(--brand-muted); font-weight: 400; }
+.lan-access-table { margin-top: 18px; }
+.lan-access-table td small { display: block; margin-top: 3px; color: var(--brand-muted); }
+.lan-access-table .current-device-label { color: var(--brand-accent); font-weight: 700; }
+.lan-decision-form { display: flex; align-items: center; gap: 7px; }
+.lan-decision-form .button { min-width: 48px; }
+.lan-action-group { display: flex; align-items: center; gap: 7px; }
+.lan-action-group form { margin: 0; }
+.lan-waiting-card { margin-top: 32px; }
 .lan-data-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.readonly-network-info div { background: #f7f7f7; }
+.readonly-network-info dd { color: var(--brand-primary); font-weight: 700; overflow-wrap: anywhere; }
+.readonly-network-info .network-url-row { grid-column: 1 / -1; }
 .network-addresses { display: grid; gap: 9px; margin: 14px 0; padding: 0; list-style: none; }
 .network-addresses li { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 9px; border: 1px solid var(--brand-border); border-radius: var(--radius-sm); background: #f7f7f7; }
 .network-addresses code { min-width: 0; overflow-wrap: anywhere; color: var(--brand-primary); font-weight: 700; }
@@ -398,6 +403,7 @@ tbody tr:hover { background: #fafafa; }
   .topbar nav a, .link-button { width: 100%; text-align: left; }
   .container { width: calc(100% - 20px); margin-top: 16px; padding-bottom: 58px; }
   .page-heading, .card-heading, .subheading, .item-banner { align-items: stretch; flex-direction: column; gap: 10px; }
+  .page-heading-status { align-self: center; }
   .section-heading .button { width: 100%; }
   .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); border-radius: var(--radius-sm); overflow: visible; }
   .steps > a, .steps > span { min-height: 42px; border-bottom: 1px solid var(--brand-border); }
@@ -435,8 +441,8 @@ tbody tr:hover { background: #fafafa; }
   .material-table input { width: 100%; }
   .summary-economics { grid-template-columns: 1fr; }
   .pagination { align-items: stretch; flex-direction: column; text-align: center; }
-  .superadmin-lan-card, .network-addresses li { align-items: stretch; flex-direction: column; }
-  .superadmin-lan-card .button, .network-addresses .button { width: 100%; }
+  .network-addresses li { align-items: stretch; flex-direction: column; }
+  .network-addresses .button { width: 100%; }
 }
 
 @media (prefers-reduced-motion: reduce) {

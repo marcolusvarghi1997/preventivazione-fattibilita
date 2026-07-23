@@ -328,16 +328,11 @@ async function main() {
   });
 
   await runAdminTest("Jazzmin usa override mirati e liste allineate", async (page) => {
-    await page.goto(`${baseURL}/superadmin/rete/`);
+    await page.goto(`${baseURL}/admin/rete/`);
     await page.getByRole("heading", { name: "Gestione rete locale" }).waitFor();
-    const lanToggle = page.getByLabel("Consenti l'accesso dagli altri dispositivi della rete locale");
-    if (!(await lanToggle.isChecked())) await lanToggle.check();
-    await page.getByRole("button", { name: "Salva impostazione LAN" }).click();
-    await page.getByText(/Accesso dalla rete locale abilitato/i).waitFor();
-    assert.match(await page.locator(".large-status").innerText(), /LAN attiva/i);
-    await page.getByLabel("Consenti l'accesso dagli altri dispositivi della rete locale").uncheck();
-    await page.getByRole("button", { name: "Salva impostazione LAN" }).click();
-    await page.getByText(/Accesso dalla rete locale disabilitato/i).waitFor();
+    await page.getByRole("heading", { name: "Informazioni di rete" }).waitFor();
+    await page.getByRole("heading", { name: "PC rilevati" }).waitFor();
+    assert.match(await page.locator(".large-status").innerText(), /in attesa|Nessuna richiesta/i);
 
     await page.goto(`${baseURL}/admin/`);
     assert.equal(await page.locator('link[href*="admin-overrides.css"]').count(), 1);

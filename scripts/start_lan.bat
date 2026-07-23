@@ -41,6 +41,8 @@ echo Controllo configurazione e aggiornamento dati...
 if errorlevel 1 goto :django_error
 ".venv\Scripts\python.exe" manage.py migrate --noinput
 if errorlevel 1 goto :django_error
+".venv\Scripts\python.exe" manage.py cleanup_invalid_sessions --verbosity 0
+if errorlevel 1 goto :django_error
 ".venv\Scripts\python.exe" manage.py collectstatic --noinput --verbosity 0
 if errorlevel 1 goto :django_error
 
@@ -69,9 +71,10 @@ if errorlevel 1 (
 
 echo.
 echo Server LAN pronto sulla porta %SERVER_PORT%.
-echo Gestione superadmin: http://127.0.0.1:%SERVER_PORT%/superadmin/rete/
+echo Gestione LAN: http://127.0.0.1:%SERVER_PORT%/admin/rete/
 echo Dagli altri PC: http://NOME-O-IP-DEL-PC:%SERVER_PORT%
-echo L'accesso remoto resta bloccato finche il superadmin non lo abilita.
+echo Ogni nuovo PC resta bloccato finche il superadmin non approva il suo indirizzo IP.
+echo Un superadmin puo accedere alla gestione LAN anche da un PC remoto.
 echo Non esporre questa applicazione direttamente su Internet.
 
 if /I "%~1"=="--check" (

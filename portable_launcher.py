@@ -96,7 +96,7 @@ class PortableApplication:
         Button(actions, text="Arresta", command=self.stop, width=12).pack(side=LEFT, padx=6)
         Label(
             self.root,
-            text="L'accesso dalla rete aziendale si attiva o disattiva in Superadmin → Configurazione azienda e rete.",
+            text="I PC della rete aziendale si autorizzano per indirizzo IP dalla pagina Gestione LAN.",
             wraplength=610,
             justify="center",
             fg="#4c5568",

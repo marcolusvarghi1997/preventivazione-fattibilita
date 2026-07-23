@@ -1,4 +1,5 @@
 from decimal import Decimal
+from django.conf import settings
 from django.core.validators import RegexValidator
 from django.db import models
 
@@ -59,11 +60,6 @@ class SiteConfiguration(models.Model):
     favicon = models.FileField("Favicon", upload_to="branding/", blank=True)
     primary_color = models.CharField("Colore principale", max_length=7, default="#273A84", validators=[hex_color_validator])
     accent_color = models.CharField("Colore secondario", max_length=7, default="#00817D", validators=[hex_color_validator])
-    lan_enabled = models.BooleanField(
-        "Accesso dalla rete LAN",
-        default=False,
-        help_text="Se attivo, gli altri dispositivi della stessa rete possono usare l'applicazione tramite l'indirizzo del PC server.",
-    )
     updated_at = models.DateTimeField("Ultima modifica", auto_now=True)
 
     class Meta:
@@ -81,6 +77,36 @@ class SiteConfiguration(models.Model):
 
     def __str__(self) -> str:
         return "Configurazione applicazione"
+
+
+class LanDeviceAccess(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "In attesa"
+        ALLOWED = "allowed", "Sì, autorizzato"
+        DENIED = "denied", "No, bloccato"
+
+    ip_address = models.GenericIPAddressField("Indirizzo IP", protocol="both", unpack_ipv4=True, unique=True)
+    status = models.CharField("Accesso", max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
+    first_seen_at = models.DateTimeField("Prima richiesta", auto_now_add=True)
+    last_seen_at = models.DateTimeField("Ultima richiesta")
+    request_count = models.PositiveIntegerField("Richieste rilevate", default=1)
+    decided_at = models.DateTimeField("Ultima decisione", null=True, blank=True)
+    decided_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="lan_access_decisions",
+        verbose_name="Decisione di",
+    )
+
+    class Meta:
+        verbose_name = "accesso dispositivo LAN"
+        verbose_name_plural = "accessi dispositivi LAN"
+        ordering = ("-last_seen_at", "ip_address")
+
+    def __str__(self) -> str:
+        return f"{self.ip_address} — {self.get_status_display()}"
 
 
 class Material(models.Model):
