@@ -36,7 +36,7 @@ Su questa pagina http://127.0.0.1:8765/preventivi/12/articoli/, per cui modifica
 Quando aggiungo un materiale, mi compaiono i dati relativi al materiale e il costo calcolato
 Il campo Costo acquisito / kg va tradotto in Costo Acquisto/kg. Il campo inoltre deve essere compilato in automatico ma devo poterlo modificare specificatamente per il preventivo che sto compilando, perciò per quello specifico materiale in quello specifico preventivo, senza modificare il dato salvato nel database
 Il pulsante salva dati articolo leggermente piu visibile
-Il campo fattibilità articolo deve essere come selettore dot per cui esclusivo, rimuovi la voce "Fattibile con lavorazioni o acquisti esterni" e aggiungi due campi checkbox affianco con "Acquisti esterni" e "Lavorazioni esterne"
+Il campo Fattibilità articolo deve essere come selettore dot per cui esclusivo, rimuovi la voce "Fattibile con lavorazioni o acquisti esterni" e aggiungi due campi checkbox affianco con "Acquisti esterni" e "Lavorazioni esterne"
 Se selezionati, deve comparire un campo compilabile opzionale per inserire il costo per questi due che andranno sommati ai costi vivi del preventivo
 Serve inoltre un altra checkbox che fa comparire un campo per una voce che scegli tu tipo "Burocrazia" per quando dobbiamo richiedere un certificato o comunque documentazione
 

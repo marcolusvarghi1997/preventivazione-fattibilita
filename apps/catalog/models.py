@@ -61,7 +61,7 @@ hex_color_validator = RegexValidator(
 
 
 class SiteConfiguration(models.Model):
-    site_title = models.CharField("Titolo applicazione", max_length=100, default="Preventivazione e fattibilità")
+    site_title = models.CharField("Titolo applicazione", max_length=100, default="Preventivazione e Fattibilità")
     company_name = models.CharField("Nome azienda", max_length=200, default="Officine Pollastri")
     address = models.TextField("Indirizzo", blank=True)
     vat = models.CharField("Partita IVA", max_length=30, blank=True)

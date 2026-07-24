@@ -29,7 +29,7 @@ class Migration(migrations.Migration):
             name='SiteConfiguration',
             fields=[
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
-                ('site_title', models.CharField(default='Preventivazione e fattibilità', max_length=100, verbose_name='Titolo applicazione')),
+                ('site_title', models.CharField(default='Preventivazione e Fattibilità', max_length=100, verbose_name='Titolo applicazione')),
                 ('company_name', models.CharField(default='Officine Pollastri', max_length=200, verbose_name='Nome azienda')),
                 ('address', models.TextField(blank=True, verbose_name='Indirizzo')),
                 ('vat', models.CharField(blank=True, max_length=30, verbose_name='Partita IVA')),

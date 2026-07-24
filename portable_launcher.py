@@ -73,7 +73,7 @@ def first_free_port() -> int:
 class PortableApplication:
     def __init__(self):
         self.root = Tk()
-        self.root.title("Preventivazione e fattibilità")
+        self.root.title("Preventivazione e Fattibilità")
         self.root.geometry("680x430")
         self.root.minsize(580, 360)
         self.status = StringVar(value="Preparazione dell'applicazione…")
@@ -85,7 +85,7 @@ class PortableApplication:
         self.root.protocol("WM_DELETE_WINDOW", self.stop)
 
     def _build_window(self):
-        Label(self.root, text="Preventivazione e fattibilità", font=("Segoe UI", 20, "bold")).pack(pady=(24, 4))
+        Label(self.root, text="Preventivazione e Fattibilità", font=("Segoe UI", 20, "bold")).pack(pady=(24, 4))
         Label(self.root, textvariable=self.status, font=("Segoe UI", 11)).pack(pady=(0, 18))
         actions = Frame(self.root)
         actions.pack(pady=4)

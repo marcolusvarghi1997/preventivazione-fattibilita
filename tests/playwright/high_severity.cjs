@@ -144,7 +144,7 @@ async function main() {
     assert.deepEqual(geometry.map((entry) => entry.value), ["internal", "to_check", "not_feasible"]);
     assert.equal(new Set(geometry.map((entry) => entry.y)).size, 1, "Nella pagina Articoli i segmenti devono essere in riga.");
     assert.ok(geometry[0].x < geometry[1].x && geometry[1].x < geometry[2].x);
-    assert.equal(new Set(geometry.map((entry) => entry.color)).size, 3, "Le tre fattibilità devono avere colori distinti.");
+    assert.equal(new Set(geometry.map((entry) => entry.color)).size, 3, "Le tre Fattibilità devono avere colori distinti.");
     assert.ok(await selector.evaluate((element) => element.getBoundingClientRect().width <= 570));
     assert.equal(await selector.locator('input[type="radio"]').first().evaluate((element) => element.getBoundingClientRect().width <= 1), true);
     const articleTrack = selector.locator("ul, div[id]").first();

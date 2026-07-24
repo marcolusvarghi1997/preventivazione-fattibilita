@@ -5,7 +5,7 @@ l'app sarà su un pc, eventualmente la possiamo caricare sul server e caricarla 
 mi serve perciò che scegli il framework di riferimento e tutto quanto
 
 L'app è così fatta:
-Il programma si occuperà di gestire preventivazione  e fattibilità e sarà utilizzato dal commerciale dell'azienda
+Il programma si occuperà di gestire preventivazione  e Fattibilità e sarà utilizzato dal commerciale dell'azienda
 
 In input il commerciale compilerà sulla base del disegno inviato dal cliente committente i campi per la realizzazione di uno o piu pezzi di carpenteria metallica
 
@@ -81,4 +81,4 @@ Si seleziona il trattamento esterno tra i seguenti e si inserisce il costo: "Zin
 Per ognuna scelta si inserisce il costo
 
 
-In output dall'app devo avere una schermata che riassume preventivo e fattibilità, e devo poter generare un report PDF da poter presentare al cliente
+In output dall'app devo avere una schermata che riassume preventivo e Fattibilità, e devo poter generare un report PDF da poter presentare al cliente

@@ -1,6 +1,6 @@
 # Preventivi Carpenteria
 
-MVP Django per la preventivazione e la verifica di fattibilità di componenti di carpenteria metallica. L'applicazione è server-rendered, in italiano, utilizzabile da browser sul PC Windows locale o dai computer della rete aziendale. Durante l'uso non richiede Internet: CSS, JavaScript e HTMX sono inclusi nel progetto.
+MVP Django per la preventivazione e la verifica di Fattibilità di componenti di carpenteria metallica. L'applicazione è server-rendered, in italiano, utilizzabile da browser sul PC Windows locale o dai computer della rete aziendale. Durante l'uso non richiede Internet: CSS, JavaScript e HTMX sono inclusi nel progetto.
 
 ## Requisiti
 
@@ -96,7 +96,7 @@ La dashboard propone **Nuovo preventivo** e **Cerca preventivo**. La compilazion
 1. dati generali, cliente e referente;
 2. articoli, materiali/pesi, costi esterni e documentali opzionali;
 3. undici fasi di lavorazione, attivabili singolarmente;
-4. riepilogo, fattibilità, prezzo offerto, PDF e completamento.
+4. riepilogo, Fattibilità, prezzo offerto, PDF e completamento.
 
 Il cliente si cerca scrivendo nel campo con suggerimenti. Può essere registrato in una finestra rapida senza lasciare il preventivo. Ogni cliente può avere più referenti, anche omonimi con email diverse; scegliendone uno, nome ed email vengono compilati e restano modificabili nello snapshot del preventivo.
 

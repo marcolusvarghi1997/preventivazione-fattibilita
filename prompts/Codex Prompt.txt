@@ -1,4 +1,4 @@
-Agisci come senior software engineer e realizza direttamente un MVP completo, funzionante e testato di un’applicazione web interna per la gestione della preventivazione e della fattibilità di componenti di carpenteria metallica.
+Agisci come senior software engineer e realizza direttamente un MVP completo, funzionante e testato di un’applicazione web interna per la gestione della preventivazione e della Fattibilità di componenti di carpenteria metallica.
 
 Non limitarti a proporre un’architettura o un piano: crea concretamente il progetto, tutti i file necessari, le migrazioni, i dati iniziali, i test, gli script di avvio e la documentazione.
 
@@ -177,7 +177,7 @@ Ogni preventivo deve avere almeno:
 * referente cliente facoltativo;
 * note interne;
 * note visibili al cliente;
-* stato generale di fattibilità;
+* stato generale di Fattibilità;
 * prezzo commerciale offerto facoltativo;
 * autore;
 * data di creazione;
@@ -191,7 +191,7 @@ Stati del preventivo:
 * Inviato;
 * Archiviato.
 
-Stati di fattibilità:
+Stati di Fattibilità:
 
 * Da verificare;
 * Fattibile internamente;
@@ -225,7 +225,7 @@ Ogni articolo deve avere:
 * revisione;
 * dimensioni;
 * note tecniche;
-* fattibilità specifica dell’articolo.
+* Fattibilità specifica dell’articolo.
 
 Uno stesso codice può essere composto da più materiali.
 
@@ -546,7 +546,7 @@ Regole:
   * costo;
   * note.
 
-Se la risposta è No e viene valorizzato un acquisto esterno, la fattibilità suggerita dell’articolo deve diventare:
+Se la risposta è No e viene valorizzato un acquisto esterno, la Fattibilità suggerita dell’articolo deve diventare:
 
 ```text
 Fattibile con lavorazioni o acquisti esterni
@@ -645,7 +645,7 @@ Crea una dashboard estremamente semplice con:
 * cliente;
 * data;
 * stato;
-* fattibilità;
+* Fattibilità;
 * prezzo offerto;
 * pulsante “Apri”.
 
@@ -697,7 +697,7 @@ Usa pulsanti espliciti:
 * Indietro;
 * Vai al riepilogo.
 
-### Passaggio 4 – Riepilogo e fattibilità
+### Passaggio 4 – Riepilogo e Fattibilità
 
 Mostra:
 
@@ -711,7 +711,7 @@ Mostra:
 * costo industriale complessivo;
 * eventuali costi mancanti;
 * controlli ancora da completare;
-* fattibilità;
+* Fattibilità;
 * prezzo commerciale offerto;
 * pulsante “Genera PDF cliente”;
 * pulsante “Duplica preventivo”;
@@ -768,7 +768,7 @@ Il PDF deve contenere:
 * materiali;
 * peso;
 * eventuali trattamenti esterni;
-* stato sintetico di fattibilità;
+* stato sintetico di Fattibilità;
 * note destinate al cliente;
 * prezzo commerciale offerto;
 * totale preventivo;
@@ -922,7 +922,7 @@ Implementa una pagina di ricerca con:
 * cliente;
 * descrizione;
 * stato;
-* fattibilità;
+* Fattibilità;
 * intervallo di date.
 
 Usa paginazione.
@@ -1150,7 +1150,7 @@ Il lavoro è concluso solo quando:
 11. Macchine Utensili e Saldatura consentono più operazioni;
 12. i costi sono calcolati correttamente;
 13. i costi storici sono protetti dagli snapshot;
-14. il riepilogo mostra fattibilità e costi mancanti;
+14. il riepilogo mostra Fattibilità e costi mancanti;
 15. il prezzo commerciale può essere inserito manualmente;
 16. viene generato un PDF cliente;
 17. il PDF non espone dati industriali interni;

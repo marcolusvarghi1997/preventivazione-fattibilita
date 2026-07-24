@@ -279,7 +279,7 @@ class ClientAndLanTests(TestCase):
         summary_response = self.client.get(reverse("quotes:summary", args=[quote.pk]))
         self.assertContains(
             summary_response,
-            "<h1>4. Riepilogo e fattibilità</h1>",
+            "<h1>4. Riepilogo e Fattibilità</h1>",
             html=True,
         )
         self.assertContains(summary_response, "sticky-actions wizard-actions wizard-actions--single")

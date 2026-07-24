@@ -104,7 +104,7 @@ Problemi rilevati: 6 alti, 7 medi e 3 bassi. Nessun errore JavaScript è apparso
 
 - Gravità: **media**
 - Percorso: aprire lo stesso preventivo in una seconda scheda → cambiare il prezzo da 4.200,50 a 4.400,00 → premere Salva e aggiornare immediatamente.
-- Comportamento attuale: dopo la corsa tra POST e GET compare “Riepilogo economico e fattibilità salvati”, ma il database conserva 4.200,50.
+- Comportamento attuale: dopo la corsa tra POST e GET compare “Riepilogo economico e Fattibilità salvati”, ma il database conserva 4.200,50.
 - Comportamento atteso: indicare chiaramente se il salvataggio è concluso; non mostrare successo per dati non persistiti.
 - Proposta: disabilitare il pulsante durante il POST, mostrare stato “Salvataggio…”, aggiungere protezione `beforeunload` solo durante richieste attive e verifica della versione salvata.
 
