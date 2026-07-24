@@ -7,6 +7,7 @@ from .models import DirectCost, ExternalTreatment, ItemMaterial, ItemPhase, Quot
 class ItemInline(admin.TabularInline):
     model = QuoteItem
     extra = 0
+    readonly_fields = ("code", "revision", "article_date")
 
 
 @admin.register(Quote)
@@ -37,9 +38,13 @@ class QuoteAdmin(ItalianDecimalAdminMixin, admin.ModelAdmin):
 
 @admin.register(QuoteItem)
 class QuoteItemAdmin(ItalianDecimalAdminMixin, admin.ModelAdmin):
-    list_display = ("code", "quote", "quantity", "feasibility", "supplementary_cost_display")
-    list_filter = ("feasibility",)
-    search_fields = ("code", "description", "quote__number")
+    list_display = ("code", "revision", "article_date", "quote", "source_version", "quantity", "feasibility", "supplementary_cost_display")
+    list_filter = ("revision", "article_date", "feasibility")
+    search_fields = ("code", "revision", "description", "quote__number")
+    ordering = ("-article_date", "-pk")
+    readonly_fields = ("code", "revision", "article_date", "source_version", "creation_token", "legacy_dimensions")
+    date_hierarchy = "article_date"
+    list_select_related = ("quote", "source_version")
 
     @admin.display(description="Costi supplementari")
     def supplementary_cost_display(self, obj):

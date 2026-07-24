@@ -13,17 +13,17 @@ class ClientContactInline(admin.TabularInline):
 
 @admin.register(Client)
 class ClientAdmin(admin.ModelAdmin):
-    list_display = ("name", "contact_name", "email", "active")
+    list_display = ("name", "email", "active")
     list_filter = ("active",)
-    search_fields = ("name", "contact_name", "email")
+    search_fields = ("name", "email")
     ordering = ("name",)
     inlines = (ClientContactInline,)
 
 
 @admin.register(ClientContact)
 class ClientContactAdmin(admin.ModelAdmin):
-    list_display = ("name", "client", "email", "phone", "active")
-    list_filter = ("active",)
+    list_display = ("name", "client", "email", "phone", "preferred", "active")
+    list_filter = ("preferred", "active")
     search_fields = ("name", "email", "client__name")
     autocomplete_fields = ("client",)
 
@@ -71,11 +71,12 @@ class ProductionResourceAdmin(ItalianDecimalAdminMixin, admin.ModelAdmin):
 
 @admin.register(LanDeviceAccess)
 class LanDeviceAccessAdmin(admin.ModelAdmin):
-    list_display = ("ip_address", "status", "first_seen_at", "last_seen_at", "request_count", "decided_by")
+    list_display = ("ip_address", "mac_address", "status", "first_seen_at", "last_seen_at", "request_count", "decided_by")
     list_filter = ("status",)
-    search_fields = ("ip_address",)
+    search_fields = ("ip_address", "mac_address")
     readonly_fields = (
         "ip_address",
+        "mac_address",
         "status",
         "first_seen_at",
         "last_seen_at",

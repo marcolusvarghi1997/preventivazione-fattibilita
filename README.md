@@ -30,18 +30,18 @@ Per configurazioni permanenti impostare le variabili d'ambiente illustrate in [.
 .\scripts\start_lan.bat
 ```
 
-È l’unico script di avvio: sul PC server si usa `http://127.0.0.1:8000`, mentre gli altri dispositivi usano l’indirizzo mostrato nella pagina dedicata **Gestione LAN**. Il middleware applicativo blocca ogni nuovo dispositivo remoto finché il superadmin non ne autorizza l’indirizzo IP.
+È l’unico script di avvio: sul PC server si usa `http://127.0.0.1:8000`, mentre gli altri dispositivi usano l’indirizzo mostrato nella pagina dedicata **Gestione LAN**. Il middleware applicativo blocca ogni nuovo dispositivo remoto finché il superadmin non ne autorizza la coppia IP + MAC rilevata dal server.
 
 ## Accesso dalla rete locale
 
 1. Avviare l'applicazione con `scripts\start_lan.bat`.
 2. Accedere come superuser e aprire **Gestione LAN** dal menu superiore oppure da `/admin/rete/`.
 3. Comunicare agli altri utenti l'indirizzo mostrato nella pagina **Gestione LAN**.
-4. Al primo collegamento del nuovo PC, aggiornare **Gestione LAN** e scegliere **Sì** o **No** accanto all'indirizzo IP rilevato.
+4. Al primo collegamento del nuovo PC, aggiornare **Gestione LAN**, verificare IP e MAC rilevati e scegliere **Sì** o **No**.
 
-La pagina è disponibile soltanto al superadmin e può essere aperta anche da un PC remoto già autorizzato dopo aver eseguito l'accesso come superadmin. Mostra le richieste in attesa, gli IP autorizzati o bloccati e, in sola lettura, l'IP del server, la porta e l'indirizzo completo. Le decisioni hanno effetto immediato e non richiedono riavvio né comandi: soltanto un IP impostato su **Sì** può aprire o inviare il modulo di accesso; gli stati **In attesa** e **No** ricevono sempre un blocco. Una richiesta può essere rimossa; se quel PC si collega nuovamente, verrà rilevato come nuova richiesta in attesa. L'autorizzazione dell'IP non sostituisce il login: ogni persona deve comunque usare il proprio account.
+La pagina è disponibile soltanto al superadmin. Una sessione superadmin remota può aprire esclusivamente **Gestione LAN** anche mentre il dispositivo è in attesa, così è possibile amministrare gli accessi senza aggirare il blocco sul resto dell'applicazione. La pagina mostra le richieste in attesa, le coppie IP + MAC autorizzate o bloccate e, in sola lettura, l'IP del server, la porta e l'indirizzo completo. Le decisioni hanno effetto immediato e non richiedono riavvio né comandi: soltanto una coppia IP + MAC impostata su **Sì** può aprire o inviare il modulo di accesso. Se il MAC associato a un IP cambia, l'accesso torna automaticamente **In attesa**; se il MAC non è verificabile, l'autorizzazione non può essere concessa e l'accesso resta bloccato. Una richiesta può essere rimossa; al collegamento successivo verrà rilevata nuovamente. L'autorizzazione di rete non sostituisce il login: ogni persona deve comunque usare il proprio account.
 
-La porta deve essere autorizzata nel firewall Windows/aziendale da un amministratore e limitata alle interfacce previste. L'app riconosce anche reti aziendali che usano indirizzi IPv4 pubblici sulla scheda locale; non esporla direttamente su Internet, ma usarla solo in LAN o tramite VPN.
+Il MAC viene letto esclusivamente dalla tabella ARP/neighbor del PC server e non da header o valori dichiarati dal browser. Per questo è normalmente disponibile solo quando client e server sono sullo stesso segmento di rete; attraverso router o alcune VPN può non essere rilevabile. Il controllo IP + MAC riduce il rischio di riutilizzo di un IP autorizzato, ma non è un meccanismo crittografico e non sostituisce credenziali, segmentazione di rete e firewall. La porta deve essere autorizzata nel firewall Windows/aziendale da un amministratore e limitata alle interfacce previste. Non esporre l'applicazione direttamente su Internet.
 
 `start_lan.bat` prepara automaticamente database e file statici e, al primo avvio, genera una chiave privata in `dati\django_secret_key.txt`. Il file viene riutilizzato agli avvii successivi e non va condiviso. Non è più necessario impostare manualmente `DJANGO_SECRET_KEY`; una variabile di sistema già presente continua comunque ad avere precedenza.
 

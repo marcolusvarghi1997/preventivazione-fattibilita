@@ -8,7 +8,7 @@
 {% else %}
 <div class="field field-{{ field.name }} {% if field.name == 'external_purchases_cost' or field.name == 'external_work_cost' or field.name == 'bureaucracy_cost' %}conditional-field{% endif %} {% if field.errors %}has-error{% endif %}">
   <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span aria-label="obbligatorio">*</span>{% endif %}</label>
-  {% if field.name == "weight_kg" %}<div class="input-unit">{{ field }}<span aria-hidden="true">kg</span></div>{% elif field.name == 'external_purchases_cost' or field.name == 'external_work_cost' or field.name == 'bureaucracy_cost' or field.name == 'unit_cost_snapshot' or field.name == 'amount' or field.name == 'cost' or field.name == 'offered_price' %}<div class="input-unit money-unit"><span aria-hidden="true">€</span>{{ field }}</div>{% else %}{{ field }}{% endif %}
+  {% if field.name == "weight_kg" %}<div class="input-unit">{{ field }}<span aria-hidden="true">kg</span></div>{% elif field.name == "length_mm" or field.name == "height_mm" or field.name == "depth_mm" %}<div class="input-unit">{{ field }}<span aria-hidden="true">mm</span></div>{% elif field.name == 'external_purchases_cost' or field.name == 'external_work_cost' or field.name == 'bureaucracy_cost' or field.name == 'unit_cost_snapshot' or field.name == 'amount' or field.name == 'cost' or field.name == 'offered_price' %}<div class="input-unit money-unit"><span aria-hidden="true">€</span>{{ field }}</div>{% else %}{{ field }}{% endif %}
   {% if field.help_text %}<small class="field-help">{{ field.help_text }}</small>{% endif %}
   {% for error in field.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
 </div>

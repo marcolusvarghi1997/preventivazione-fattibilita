@@ -102,7 +102,7 @@ def build_customer_pdf(quote) -> bytes:
             included_work.append(label)
         data.append([
             Paragraph(safe(item.code), styles["Small"]), Paragraph(safe(item.revision or "—"), styles["Small"]),
-            Paragraph(safe(item.description or "—"), styles["Small"]), Paragraph(safe(item.dimensions or "—"), styles["Small"]),
+            Paragraph(safe(item.description or "—"), styles["Small"]), Paragraph(safe(item.dimensions_display or "—"), styles["Small"]),
             str(item.quantity), Paragraph(materials, styles["Small"]), Paragraph("<br/>".join(included_work) or "—", styles["Small"]),
         ])
     items_table = Table(data, repeatRows=1, colWidths=[21 * mm, 11 * mm, 36 * mm, 23 * mm, 11 * mm, 42 * mm, 30 * mm])

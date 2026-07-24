@@ -14,8 +14,9 @@ django.setup()
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
+from django.utils import timezone
 
-from apps.catalog.models import Client, ClientContact, Material, PhaseDefinition, ProductionResource
+from apps.catalog.models import Client, ClientContact, LanDeviceAccess, Material, PhaseDefinition, ProductionResource
 from apps.quotes.models import ItemMaterial, Quote, QuoteItem, TimeOperation
 from apps.quotes.services.quotes import initialize_item_phases
 
@@ -27,6 +28,7 @@ def add_item(quote, material, code, order):
     item = QuoteItem.objects.create(
         quote=quote,
         code=code,
+        revision="00",
         quantity=2,
         description=f"Articolo automatico {code}",
         display_order=order,
@@ -63,7 +65,12 @@ def main(output_path):
     user.groups.add(Group.objects.get(name="Commerciale"))
     admin_user = get_user_model().objects.create_superuser("playwright-admin", password=PASSWORD)
     client = Client.objects.create(name="Cliente Playwright", email="amministrazione@playwright.example", phone="02 123456")
-    contact = ClientContact.objects.create(client=client, name="Referente Unico", email="referente@playwright.example")
+    contact = ClientContact.objects.create(
+        client=client, name="Referente Unico", email="referente@playwright.example", preferred=True
+    )
+    client_without_preferred = Client.objects.create(name="Cliente senza preferito")
+    ClientContact.objects.create(client=client_without_preferred, name="Referente Uno")
+    ClientContact.objects.create(client=client_without_preferred, name="Referente Due")
     Client.objects.create(name="Altro Cliente", email="altro@example.com", phone="011 987654")
     for index in range(12):
         Client.objects.create(
@@ -85,12 +92,23 @@ def main(output_path):
         client=client,
         offered_price=Decimal("100"),
         status=Quote.Status.ARCHIVED,
+        status_before_archive=Quote.Status.DRAFT,
     )
     add_item(archived_quote, material, "ARCH-01", 1)
 
     zero_cost_quote = Quote.objects.create(author=user, client=client, offered_price=Decimal("200"))
     zero_cost_item = add_item(zero_cost_quote, material, "ZERO-01", 1)
     add_operation(zero_cost_item, "sabbiatura", "0")
+    version_quote = Quote.objects.create(author=user, client=client)
+    verified_lan_device = LanDeviceAccess.objects.create(
+        ip_address="192.168.1.201",
+        mac_address="02:11:22:33:44:55",
+        last_seen_at=timezone.now(),
+    )
+    unverified_lan_device = LanDeviceAccess.objects.create(
+        ip_address="192.168.1.202",
+        last_seen_at=timezone.now(),
+    )
 
     data = {
         "username": user.username,
@@ -99,10 +117,14 @@ def main(output_path):
         "main_operation": main_operation.pk,
         "archived_quote": archived_quote.pk,
         "zero_cost_quote": zero_cost_quote.pk,
+        "version_quote": version_quote.pk,
         "client_name": client.name,
         "contact_name": contact.name,
         "contact_email": contact.email,
+        "client_without_preferred": client_without_preferred.name,
         "admin_username": admin_user.username,
+        "verified_lan_device": verified_lan_device.pk,
+        "unverified_lan_device": unverified_lan_device.pk,
     }
     with open(output_path, "w", encoding="utf-8") as output:
         json.dump(data, output)

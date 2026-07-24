@@ -3,7 +3,10 @@
 {% block content %}
 <section class="card narrow lan-waiting-card" aria-labelledby="lan-waiting-title">
   <span class="eyebrow">Accesso dalla rete locale</span>
-  {% if access_denied %}
+  {% if mac_unavailable %}
+    <h1 id="lan-waiting-title">Identità di rete non verificabile</h1>
+    <div class="alert error"><strong>Accesso bloccato per sicurezza.</strong> Il server non riesce a rilevare il MAC associato a questo IP. Verifica che il PC sia nello stesso segmento di rete locale e aggiorna la pagina.</div>
+  {% elif access_denied %}
     <h1 id="lan-waiting-title">Questo PC non è autorizzato</h1>
     <div class="alert error"><strong>Accesso negato dal superadmin.</strong> Se devi usare l’applicazione, chiedi al superadmin di autorizzare nuovamente questo indirizzo.</div>
   {% else %}
@@ -12,6 +15,7 @@
   {% endif %}
   <dl class="data-grid">
     <div><dt>Indirizzo IP rilevato</dt><dd><code>{{ remote_ip }}</code></dd></div>
+    <div><dt>Indirizzo MAC rilevato</dt><dd>{% if remote_mac %}<code>{{ remote_mac }}</code>{% else %}Non disponibile{% endif %}</dd></div>
     <div><dt>Stato</dt><dd>{{ device.get_status_display }}</dd></div>
   </dl>
   <p class="field-help">Dopo l’autorizzazione aggiorna questa pagina. Saranno comunque necessari nome utente e password.</p>

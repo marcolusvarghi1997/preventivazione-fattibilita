@@ -27,7 +27,7 @@
       {% for row in summary_items %}{% with item=row.item %}
       <article class="summary-item">
         <div class="summary-item-heading"><div><h3>{{ item.code }}</h3><p>{{ item.description|default:"Nessuna descrizione" }}</p></div><strong>{{ item.total_cost|money }}</strong></div>
-        <div class="summary-meta"><span><strong>{{ item.quantity }}</strong> pz</span><span>{{ item.get_feasibility_display }}</span><span>{{ item.revision|default:"Nessuna revisione" }}</span></div>
+        <div class="summary-meta"><span><strong>{{ item.quantity }}</strong> pz</span><span>{{ item.get_feasibility_display }}</span><span>Rev. {{ item.revision }}</span><span>{{ item.article_date|date:"d/m/Y" }}</span></div>
         <h3>Materiali</h3>
         <ul class="summary-list">{% for material in item.materials.all %}<li><span>{{ material.material.name }} · {{ material.weight_kg|weight }}/pezzo</span><strong>{% if material.total_cost is None %}<span class="warning-text">Costo non valorizzato</span>{% else %}{{ material.total_cost|money }}{% endif %}</strong></li>{% empty %}<li class="error-text">Nessun materiale</li>{% endfor %}</ul>
         <h3>Fasi attive</h3>

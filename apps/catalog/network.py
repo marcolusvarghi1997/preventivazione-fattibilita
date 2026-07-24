@@ -1,7 +1,65 @@
 from __future__ import annotations
 
 from ipaddress import ip_address
+import os
+import re
 import socket
+import subprocess
+
+
+MAC_PATTERN = re.compile(r"^(?:[0-9A-Fa-f]{2}[:-]){5}[0-9A-Fa-f]{2}$")
+
+
+def normalize_mac(value: str | None) -> str | None:
+    """Normalizza un MAC unicast valido senza accettare valori dichiarati dal client."""
+    candidate = (value or "").strip()
+    if not MAC_PATTERN.fullmatch(candidate):
+        return None
+    octets = [int(part, 16) for part in candidate.replace("-", ":").split(":")]
+    if octets == [0] * 6 or octets == [255] * 6 or octets[0] & 1:
+        return None
+    return ":".join(f"{octet:02X}" for octet in octets)
+
+
+def get_remote_mac(remote_ip: str) -> str | None:
+    """Legge il MAC dalla tabella neighbor del server; non usa header HTTP."""
+    try:
+        parsed_ip = ip_address(remote_ip)
+    except ValueError:
+        return None
+    if parsed_ip.version != 4 or parsed_ip.is_loopback:
+        return None
+
+    command = (
+        ["arp", "-a", str(parsed_ip)]
+        if os.name == "nt"
+        else ["ip", "neighbor", "show", str(parsed_ip)]
+    )
+    run_options = {
+        "capture_output": True,
+        "text": True,
+        "timeout": 1,
+        "check": False,
+    }
+    if os.name == "nt":
+        run_options["creationflags"] = subprocess.CREATE_NO_WINDOW
+    try:
+        result = subprocess.run(command, **run_options)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if result.returncode != 0:
+        return None
+
+    expected_ip = str(parsed_ip)
+    for line in result.stdout.splitlines():
+        tokens = line.replace("(", " ").replace(")", " ").split()
+        if expected_ip not in tokens:
+            continue
+        for token in tokens:
+            mac_address = normalize_mac(token)
+            if mac_address:
+                return mac_address
+    return None
 
 
 def get_remote_ip(request) -> str:

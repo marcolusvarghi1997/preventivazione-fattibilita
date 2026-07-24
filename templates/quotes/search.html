@@ -1,9 +1,66 @@
 {% extends "base.html" %}
+{% load quote_format %}
 {% block content %}
-<div class="page-heading"><div><h1>Cerca preventivo</h1><p>Puoi usare uno o piu filtri.</p></div><a class="button primary" href="{% url 'quotes:create' %}">Nuovo preventivo</a></div>
-<form method="get" class="card search-form">{% include "quotes/_form_fields.html" with form=form %}<div class="form-actions"><button class="button primary" type="submit">Cerca</button><a class="button secondary" href="{% url 'quotes:search' %}">Azzera</a></div></form>
-<section class="card"><h2>Risultati ({{ page.paginator.count }})</h2>
-{% if page.object_list %}<div class="table-wrap"><table><thead><tr><th>Numero</th><th>Cliente</th><th>Data</th><th>Stato</th><th>Fattibilita</th><th>Articoli</th><th></th></tr></thead><tbody>{% for quote in page %}<tr><td><strong>{{ quote.number }}</strong></td><td>{{ quote.client|default:"—" }}</td><td>{{ quote.date|date:"d/m/Y" }}</td><td><span class="status {{ quote.status_css_class }}">{{ quote.display_status }}</span></td><td>{{ quote.get_feasibility_display }}</td><td>{% for item in quote.items.all %}{{ item.code }}{% if not forloop.last %}, {% endif %}{% endfor %}</td><td><a class="button small" href="{% url 'quotes:summary' quote.pk %}">Apri</a></td></tr>{% endfor %}</tbody></table></div>
-<nav class="pagination" aria-label="Pagine risultati">{% if page.has_previous %}<a class="button small" href="?page={{ page.previous_page_number }}&{{ request.GET.urlencode }}">Pagina precedente</a>{% endif %}<span>Pagina {{ page.number }} di {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a class="button small" href="?page={{ page.next_page_number }}&{{ request.GET.urlencode }}">Pagina successiva</a>{% endif %}</nav>
-{% else %}<div class="empty">Nessun preventivo corrisponde ai filtri indicati.</div>{% endif %}</section>
+<div class="page-heading"><div><h1>Cerca preventivo</h1><p>Puoi usare uno o più filtri.</p></div><a class="button primary" href="{% url 'quotes:create' %}">Nuovo preventivo</a></div>
+<form method="get" class="card search-filter-card" aria-label="Filtri ricerca preventivi">
+  <input type="hidden" name="sort" value="{{ sort }}"><input type="hidden" name="dir" value="{{ direction }}">
+  {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+  {% if form.non_field_errors %}<div class="field-error" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+  <div class="search-filter-heading">
+    <div><span class="eyebrow">Filtri</span><h2>Affina i risultati</h2></div>
+    <p>Puoi combinare più criteri.</p>
+  </div>
+  <div class="search-filter-grid">
+    {% include "quotes/_field.html" with field=form.q %}
+    {% include "quotes/_field.html" with field=form.status %}
+    {% include "quotes/_field.html" with field=form.feasibility %}
+    {% include "quotes/_field.html" with field=form.date_from %}
+    {% include "quotes/_field.html" with field=form.date_to %}
+    <div class="search-filter-actions"><button class="button primary" type="submit">Cerca</button><a class="button secondary" href="{% url 'quotes:search' %}">Azzera</a></div>
+  </div>
+</form>
+<section class="card">
+  {% if page.object_list %}
+  <form method="post" action="{% url 'quotes:bulk_restore' %}{% if filter_query %}?{{ filter_query }}{% endif %}" data-bulk-action-form>
+    {% csrf_token %}
+    <div class="card-heading bulk-card-heading">
+      <div><h2>Risultati ({{ page.paginator.count }})</h2><p>I preventivi archiviati possono essere ripristinati nel loro stato precedente.</p></div>
+      {% if perms.quotes.archive_quote and has_archived_results %}<button class="button secondary" type="button" data-bulk-mode-toggle aria-expanded="false">Ripristina multipli</button>{% endif %}
+    </div>
+    {% if perms.quotes.archive_quote and has_archived_results %}
+    <div class="bulk-toolbar" data-bulk-only hidden>
+      <span data-bulk-selection-status aria-live="polite">Nessun preventivo selezionato</span>
+      <div class="bulk-actions">
+        <button class="button secondary" type="button" data-bulk-mode-cancel>Annulla</button>
+        <button class="button secondary" type="submit" name="scope" value="selected" data-bulk-selected-button data-confirm="Ripristinare i preventivi selezionati nei rispettivi stati precedenti?" disabled>Ripristina selezionati</button>
+        <button class="button primary" type="submit" name="scope" value="all" data-confirm="Ripristinare tutti i preventivi archiviati presenti nei risultati della ricerca, comprese le altre pagine?">Ripristina tutti</button>
+      </div>
+    </div>
+    {% endif %}
+    <div class="table-wrap">
+      <table>
+        <thead><tr>{% if perms.quotes.archive_quote and has_archived_results %}<th class="selection-column" data-bulk-only hidden><input type="checkbox" data-select-all-quotes aria-label="Seleziona tutti i preventivi archiviati visibili"></th>{% endif %}
+          <th aria-sort="{% if sort == 'number' %}{% if direction == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}"><a class="sort-link" href="{% sort_url 'number' sort direction %}">Numero <span aria-hidden="true">{% if sort == 'number' %}{% if direction == 'asc' %}↑{% else %}↓{% endif %}{% else %}↕{% endif %}</span></a></th>
+          <th aria-sort="{% if sort == 'client' %}{% if direction == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}"><a class="sort-link" href="{% sort_url 'client' sort direction %}">Cliente <span aria-hidden="true">{% if sort == 'client' %}{% if direction == 'asc' %}↑{% else %}↓{% endif %}{% else %}↕{% endif %}</span></a></th>
+          <th aria-sort="{% if sort == 'date' %}{% if direction == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}"><a class="sort-link" href="{% sort_url 'date' sort direction %}">Data <span aria-hidden="true">{% if sort == 'date' %}{% if direction == 'asc' %}↑{% else %}↓{% endif %}{% else %}↕{% endif %}</span></a></th>
+          <th aria-sort="{% if sort == 'status' %}{% if direction == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}"><a class="sort-link" href="{% sort_url 'status' sort direction %}">Stato <span aria-hidden="true">{% if sort == 'status' %}{% if direction == 'asc' %}↑{% else %}↓{% endif %}{% else %}↕{% endif %}</span></a></th>
+          <th aria-sort="{% if sort == 'feasibility' %}{% if direction == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}"><a class="sort-link" href="{% sort_url 'feasibility' sort direction %}">Fattibilità <span aria-hidden="true">{% if sort == 'feasibility' %}{% if direction == 'asc' %}↑{% else %}↓{% endif %}{% else %}↕{% endif %}</span></a></th>
+          <th aria-sort="{% if sort == 'articles' %}{% if direction == 'asc' %}ascending{% else %}descending{% endif %}{% else %}none{% endif %}"><a class="sort-link" href="{% sort_url 'articles' sort direction %}">Articoli <span aria-hidden="true">{% if sort == 'articles' %}{% if direction == 'asc' %}↑{% else %}↓{% endif %}{% else %}↕{% endif %}</span></a></th><th><span class="visually-hidden">Apri</span></th></tr></thead>
+        <tbody>
+          {% for quote in page %}
+          <tr class="clickable-row" data-row-href="{% url 'quotes:resume' quote.pk %}" tabindex="0">
+            {% if perms.quotes.archive_quote and has_archived_results %}<td class="selection-column" data-bulk-only hidden>{% if quote.status == 'archived' %}<input type="checkbox" name="quote_ids" value="{{ quote.pk }}" data-quote-checkbox aria-label="Seleziona preventivo {{ quote.number }}">{% endif %}</td>{% endif %}
+            <td><strong>{{ quote.number }}</strong></td><td>{{ quote.client|default:"—" }}</td><td>{{ quote.date|date:"d/m/Y" }}</td><td><span class="status {{ quote.status_css_class }}">{{ quote.display_status }}</span></td><td><span class="feasibility-text {{ quote.feasibility_css_class }}">{{ quote.get_feasibility_display }}</span></td><td>{% for item in quote.items.all %}{{ item.code }}{% if not forloop.last %}, {% endif %}{% endfor %}</td><td class="row-open"><a class="row-arrow" href="{% url 'quotes:resume' quote.pk %}" aria-label="Riprendi preventivo {{ quote.number }}"><span aria-hidden="true">→</span></a></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </form>
+  <nav class="pagination" aria-label="Pagine risultati">{% if page.has_previous %}<a class="button small" href="?page={{ page.previous_page_number }}{% if filter_query %}&{{ filter_query }}{% endif %}">Pagina precedente</a>{% endif %}<span>Pagina {{ page.number }} di {{ page.paginator.num_pages }}</span>{% if page.has_next %}<a class="button small" href="?page={{ page.next_page_number }}{% if filter_query %}&{{ filter_query }}{% endif %}">Pagina successiva</a>{% endif %}</nav>
+  {% else %}
+  <div class="card-heading"><div><h2>Risultati (0)</h2></div></div>
+  <div class="empty">Nessun preventivo corrisponde ai filtri indicati.</div>
+  {% endif %}
+</section>
 {% endblock %}

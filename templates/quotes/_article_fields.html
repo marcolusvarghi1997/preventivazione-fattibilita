@@ -3,12 +3,11 @@
 
 <section class="article-section article-section--essential">
   <div class="article-section-heading">
-    <div><span class="eyebrow">Informazioni principali</span><h2>Identificazione articolo</h2></div>
-    <p>Codice, quantità e descrizione sono i dati usati più spesso.</p>
+    <div><span class="eyebrow">Articolo caricato</span><h2>Dati articolo</h2></div>
+    <p>Questi dati appartengono esclusivamente alla copia inserita nel preventivo.</p>
   </div>
   <div class="article-primary-grid">
     <div class="article-core-fields">
-      {% include "quotes/_field.html" with field=item_form.code %}
       {% include "quotes/_field.html" with field=item_form.quantity %}
       {% include "quotes/_field.html" with field=item_form.feasibility %}
     </div>
@@ -18,27 +17,13 @@
   </div>
 </section>
 
-{% if material_form %}
-<section class="article-section piece-section article-section--material">
-  {% for hidden in material_form.hidden_fields %}{{ hidden }}{% endfor %}
-  {% if material_form.non_field_errors %}<div class="field-error full" role="alert">{{ material_form.non_field_errors }}</div>{% endif %}
-  <div class="article-section-heading">
-    <div><span class="eyebrow">Dato necessario</span><h2>Materiale principale del pezzo</h2></div>
-    <p>Il costo proposto dal catalogo resta modificabile per questo preventivo.</p>
-  </div>
-  <div class="article-material-grid">
-    {% include "quotes/_field.html" with field=material_form.material %}
-    {% include "quotes/_field.html" with field=material_form.weight_kg %}
-    {% include "quotes/_field.html" with field=material_form.unit_cost_snapshot %}
-  </div>
-</section>
-{% endif %}
-
-<details class="article-secondary" {% if item_form.revision.errors or item_form.dimensions.errors or item_form.technical_notes.errors %}open{% endif %}>
-  <summary><span><strong>Dettagli tecnici aggiuntivi</strong><small>Revisione, dimensioni e note tecniche</small></span></summary>
+<details class="article-secondary" {% if item_form.length_mm.errors or item_form.height_mm.errors or item_form.depth_mm.errors or item_form.technical_notes.errors %}open{% endif %}>
+  <summary><span><strong>Dettagli tecnici aggiuntivi</strong><small>Dimensioni e note tecniche</small></span></summary>
   <div class="article-secondary-grid">
-    {% include "quotes/_field.html" with field=item_form.revision %}
-    {% include "quotes/_field.html" with field=item_form.dimensions %}
+    {% include "quotes/_field.html" with field=item_form.length_mm %}
+    {% include "quotes/_field.html" with field=item_form.height_mm %}
+    {% include "quotes/_field.html" with field=item_form.depth_mm %}
+    <div class="dimension-tools"><button class="button secondary small" type="button" data-open-unit-converter>Converti misure</button></div>
     {% include "quotes/_field.html" with field=item_form.technical_notes %}
   </div>
 </details>

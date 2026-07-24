@@ -7,7 +7,6 @@ from django.db.models.functions import Lower
 
 class Client(models.Model):
     name = models.CharField("Ragione sociale", max_length=200, db_index=True)
-    contact_name = models.CharField("Referente predefinito", max_length=150, blank=True)
     email = models.EmailField("Email", blank=True)
     phone = models.CharField("Telefono", max_length=50, blank=True)
     address = models.TextField("Indirizzo", blank=True)
@@ -28,6 +27,7 @@ class ClientContact(models.Model):
     email = models.EmailField("Email", blank=True, db_index=True)
     phone = models.CharField("Telefono", max_length=50, blank=True)
     notes = models.TextField("Note", blank=True)
+    preferred = models.BooleanField("Preferito", default=False)
     active = models.BooleanField("Attivo", default=True)
 
     class Meta:
@@ -46,6 +46,11 @@ class ClientContact(models.Model):
                 Lower("email"),
                 condition=~models.Q(email=""),
                 name="unique_contact_email_per_client_ci",
+            ),
+            models.UniqueConstraint(
+                fields=["client"],
+                condition=models.Q(preferred=True),
+                name="unique_preferred_contact_per_client",
             ),
         ]
 
@@ -98,6 +103,14 @@ class LanDeviceAccess(models.Model):
         DENIED = "denied", "No, bloccato"
 
     ip_address = models.GenericIPAddressField("Indirizzo IP", protocol="both", unpack_ipv4=True, unique=True)
+    mac_address = models.CharField(
+        "Indirizzo MAC",
+        max_length=17,
+        blank=True,
+        default="",
+        db_index=True,
+        help_text="Rilevato dal server tramite la tabella di rete locale.",
+    )
     status = models.CharField("Accesso", max_length=10, choices=Status.choices, default=Status.PENDING, db_index=True)
     first_seen_at = models.DateTimeField("Prima richiesta", auto_now_add=True)
     last_seen_at = models.DateTimeField("Ultima richiesta")
@@ -118,7 +131,8 @@ class LanDeviceAccess(models.Model):
         ordering = ("-last_seen_at", "ip_address")
 
     def __str__(self) -> str:
-        return f"{self.ip_address} — {self.get_status_display()}"
+        identity = f"{self.ip_address} / {self.mac_address}" if self.mac_address else str(self.ip_address)
+        return f"{identity} — {self.get_status_display()}"
 
 
 class Material(models.Model):

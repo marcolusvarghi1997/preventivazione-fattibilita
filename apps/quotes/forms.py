@@ -1,4 +1,5 @@
 from decimal import Decimal, InvalidOperation
+import uuid
 
 from django import forms
 from django.core.exceptions import ValidationError
@@ -166,7 +167,56 @@ class QuoteSummaryForm(forms.ModelForm):
         return quote
 
 
+class ArticleLoadForm(forms.Form):
+    code = forms.CharField(
+        label="Codice",
+        max_length=100,
+        widget=forms.TextInput(attrs={
+            "autocomplete": "off",
+            "data-article-code": "",
+            "placeholder": "Inizia a scrivere il codice",
+            "role": "combobox",
+            "aria-autocomplete": "list",
+            "aria-expanded": "false",
+        }),
+    )
+    revision = forms.CharField(
+        label="Revisione",
+        max_length=50,
+        widget=forms.TextInput(attrs={
+            "autocomplete": "off",
+            "data-article-revision": "",
+            "placeholder": "Es. 00",
+        }),
+    )
+    source_version_id = forms.IntegerField(required=False, widget=forms.HiddenInput())
+    creation_token = forms.UUIDField(required=False, widget=forms.HiddenInput())
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound:
+            self.fields["creation_token"].initial = uuid.uuid4()
+
+    def clean_code(self):
+        return self.cleaned_data["code"].strip()
+
+    def clean_revision(self):
+        return self.cleaned_data["revision"].strip()
+
+
 class QuoteItemForm(forms.ModelForm):
+    length_mm = ItalianDecimalField(
+        label="Lunghezza", required=False, min_value=Decimal("0.001"), max_digits=12, decimal_places=3,
+        widget=ItalianDecimalInput(attrs={"min": "0.001"}, places=3),
+    )
+    height_mm = ItalianDecimalField(
+        label="Altezza", required=False, min_value=Decimal("0.001"), max_digits=12, decimal_places=3,
+        widget=ItalianDecimalInput(attrs={"min": "0.001"}, places=3),
+    )
+    depth_mm = ItalianDecimalField(
+        label="Profondità", required=False, min_value=Decimal("0.001"), max_digits=12, decimal_places=3,
+        widget=ItalianDecimalInput(attrs={"min": "0.001"}, places=3),
+    )
     external_purchases_cost = ItalianDecimalField(
         label="Costo acquisti esterni", required=False, min_value=Decimal("0"), max_digits=14, decimal_places=2,
         widget=ItalianDecimalInput(attrs={"min": "0", "data-extra-cost": "external_purchases_cost"}, places=2),
@@ -183,7 +233,7 @@ class QuoteItemForm(forms.ModelForm):
     class Meta:
         model = QuoteItem
         fields = (
-            "code", "quantity", "description", "revision", "dimensions", "technical_notes", "feasibility",
+            "quantity", "description", "length_mm", "height_mm", "depth_mm", "technical_notes", "feasibility",
             "external_purchases", "external_purchases_cost", "external_work", "external_work_cost",
             "bureaucracy", "bureaucracy_cost",
         )
@@ -367,6 +417,7 @@ class QuoteSearchForm(forms.Form):
         (Quote.Status.DRAFT, "Bozza"),
         (Quote.Status.COMPLETED, "Completato"),
         (Quote.Status.REJECTED, "Rifiutato"),
+        (Quote.Status.ARCHIVED, "Archiviato"),
     ))
     feasibility = forms.ChoiceField(label="Fattibilità", required=False, choices=(("", "Tutte"), *Feasibility.choices))
     date_from = forms.DateField(label="Dal", required=False, widget=DateInput())
@@ -391,6 +442,7 @@ class QuickClientForm(forms.ModelForm):
                 name=self.cleaned_data["contact_name"],
                 email=self.cleaned_data.get("contact_email", ""),
                 phone=self.cleaned_data.get("contact_phone", ""),
+                preferred=True,
             )
         return client
 
@@ -398,7 +450,7 @@ class QuickClientForm(forms.ModelForm):
 class QuickClientContactForm(forms.ModelForm):
     class Meta:
         model = ClientContact
-        fields = ("client", "name", "email", "phone")
+        fields = ("client", "name", "email", "phone", "preferred")
         widgets = {
             "client": forms.HiddenInput(attrs={"data-quick-contact-client": ""}),
         }

@@ -8,7 +8,7 @@
 {% for item_row in item_rows %}
 <section class="item-work">
   <div class="item-banner">
-    <div><span class="eyebrow">Articolo</span><h2>{{ item_row.item.code }}</h2><p>{{ item_row.item.description|default:"Nessuna descrizione" }} · Quantità {{ item_row.item.quantity }}</p></div>
+    <div><span class="eyebrow">Articolo</span><h2>{{ item_row.item.code }}</h2><p>Rev. {{ item_row.item.revision }} · {{ item_row.item.article_date|date:"d/m/Y" }} · {{ item_row.item.description|default:"Nessuna descrizione" }} · Quantità {{ item_row.item.quantity }}</p></div>
     <button class="button ghost light small" type="button" data-phase-filter aria-pressed="false">Mostra solo attive</button>
   </div>
 
@@ -41,7 +41,7 @@
 {% empty %}<div class="alert error">Prima di configurare le lavorazioni devi inserire almeno un articolo.</div>{% endfor %}
 <div class="form-actions sticky-actions wizard-actions">
   <a class="button secondary" href="{% url 'quotes:items' quote.pk %}">Indietro</a>
-  <a class="button primary" href="{% url 'quotes:summary' quote.pk %}">{% if quote.status == "archived" %}Vai al riepilogo{% else %}Salva e vai al riepilogo{% endif %}</a>
+  <a class="button primary" href="{% url 'quotes:summary' quote.pk %}">Vai al riepilogo</a>
 </div>
 </div>
 {% endblock %}

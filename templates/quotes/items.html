@@ -4,7 +4,7 @@
 {% include "quotes/_steps.html" %}
 <div class="items-workspace">
 <div class="page-heading section-heading">
-  <div><span class="eyebrow">Preventivo {{ quote.number }}</span><h1>2. Articoli</h1><p>Inserisci prima i dati essenziali. Dettagli tecnici e costi facoltativi restano separati.</p></div>
+  <div><span class="eyebrow">Preventivo {{ quote.number }}</span><h1>2. Articoli</h1><p>Prima carica codice e revisione. Dopo il caricamento puoi modificare tutti i dati della copia associata al preventivo.</p></div>
   {% if quote.status != "archived" %}<button class="button primary" type="button" data-add-article aria-controls="article-drafts"><span aria-hidden="true">＋</span> Aggiungi articolo</button>{% endif %}
 </div>
 {% if quote.status == "archived" %}<div class="alert warning"><strong>Preventivo archiviato:</strong> i dati sono disponibili in sola lettura. Duplica il preventivo dal riepilogo per modificarli.</div>{% endif %}
@@ -13,11 +13,11 @@
 <div id="article-drafts" class="article-list" aria-live="polite">
   {% if show_draft %}
   <details class="article-card draft-card has-errors" open data-new-article>
-    <summary class="article-summary"><span class="article-index">Nuovo</span><span><strong>Articolo da completare</strong><small>Correggi i campi indicati</small></span><span class="disclosure">Comprimi</span></summary>
+    <summary class="article-summary"><span class="article-index">Nuovo</span><span><strong>Carica articolo</strong><small>Correggi codice e revisione</small></span><span class="disclosure">Comprimi</span></summary>
     <div class="article-body">
-      <form method="post" action="{% url 'quotes:item_add' quote.pk %}" class="article-create-form" hx-post="{% url 'quotes:item_add' quote.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
-        {% include "quotes/_article_fields.html" with item_form=draft_item_form material_form=draft_material_form %}
-        <div class="form-actions article-save-bar"><button class="button ghost" type="button" data-remove-draft>Scarta</button><button class="button primary" type="submit">Salva articolo</button></div>
+      <form method="post" action="{% url 'quotes:item_add' quote.pk %}" class="article-create-form" data-article-version-form data-version-lookup-url="{% url 'quotes:item_latest_version' quote.pk %}" hx-post="{% url 'quotes:item_add' quote.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
+        {% include "quotes/_article_load_fields.html" with form=article_load_form %}
+        <div class="form-actions article-save-bar"><button class="button ghost" type="button" data-remove-draft>Scarta</button><button class="button primary" type="submit">Carica articolo</button></div>
       </form>
     </div>
   </details>
@@ -26,11 +26,11 @@
 
 <template id="article-draft-template">
   <details class="article-card draft-card" open data-new-article>
-    <summary class="article-summary"><span class="article-index">Nuovo</span><span><strong>Articolo da completare</strong><small>Inserisci articolo, materiale e peso</small></span><span class="disclosure">Comprimi</span></summary>
+    <summary class="article-summary"><span class="article-index">Nuovo</span><span><strong>Carica articolo</strong><small>Inserisci codice e revisione</small></span><span class="disclosure">Comprimi</span></summary>
     <div class="article-body">
-      <form method="post" action="{% url 'quotes:item_add' quote.pk %}" class="article-create-form" hx-post="{% url 'quotes:item_add' quote.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
-        {% include "quotes/_article_fields.html" with item_form=draft_item_form material_form=draft_material_form %}
-        <div class="form-actions article-save-bar"><button class="button ghost" type="button" data-remove-draft>Scarta</button><button class="button primary" type="submit">Salva articolo</button></div>
+      <form method="post" action="{% url 'quotes:item_add' quote.pk %}" class="article-create-form" data-article-version-form data-version-lookup-url="{% url 'quotes:item_latest_version' quote.pk %}" hx-post="{% url 'quotes:item_add' quote.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
+        {% include "quotes/_article_load_fields.html" with form=article_load_form %}
+        <div class="form-actions article-save-bar"><button class="button ghost" type="button" data-remove-draft>Scarta</button><button class="button primary" type="submit">Carica articolo</button></div>
       </form>
     </div>
   </details>
@@ -39,22 +39,23 @@
 
 <section id="items-list" class="article-list" aria-label="Articoli del preventivo">
 {% for row in item_rows %}
-  <details class="article-card {% if row.item_form.errors or row.material_form.errors %}has-errors{% endif %}" {% if forloop.first or row.item_form.errors or row.material_form.errors %}open{% endif %} data-article-card>
+  <details class="article-card {% if row.item_form.errors or row.material_form.errors %}has-errors{% endif %}" {% if forloop.first or row.item.pk == open_item_id or row.item_form.errors or row.material_form.errors %}open{% endif %} data-article-card>
     <summary class="article-summary">
-      <span class="article-index">{{ forloop.counter|stringformat:"02d" }}</span>
-      <span><strong>{{ row.item.code }}</strong><small>{{ row.item.description|default:"Nessuna descrizione" }} · {{ row.item.quantity }} pz · {{ row.item.materials.count }} material{{ row.item.materials.count|pluralize:"e,i" }}</small></span>
+      <span class="article-index">{{ forloop.revcounter|stringformat:"02d" }}</span>
+      <span><strong>{{ row.item.code }}</strong><small>Rev. {{ row.item.revision }} · {{ row.item.article_date|date:"d/m/Y" }} · {{ row.item.quantity }} pz · {{ row.item.materials.count }} material{{ row.item.materials.count|pluralize:"e,i" }}</small></span>
       <span class="disclosure">Dettagli</span>
     </summary>
     <div class="article-body">
       {% if quote.status != "archived" %}
-      <form method="post" action="{% url 'quotes:item_edit' quote.pk row.item.pk %}" class="article-create-form article-edit-form" hx-post="{% url 'quotes:item_edit' quote.pk row.item.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}
+      <div class="loaded-article-identity"><span class="eyebrow">Articolo caricato</span><strong>{{ row.item.code }}</strong><span>Revisione {{ row.item.revision }} · {{ row.item.article_date|date:"d/m/Y" }}</span></div>
+      <form method="post" action="{% url 'quotes:item_edit' quote.pk row.item.pk %}" class="article-create-form article-edit-form" data-preserve-scroll hx-post="{% url 'quotes:item_edit' quote.pk row.item.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML show:none">{% csrf_token %}
         {% include "quotes/_article_fields.html" with item_form=row.item_form %}
         <div class="form-actions article-save-bar"><button class="button primary" type="submit">Salva modifiche articolo</button></div>
       </form>
       {% else %}
       <section class="article-section article-section--essential">
         <div class="subheading"><h2>Dati articolo</h2><span class="status">{{ row.item.get_feasibility_display }}</span></div>
-        <dl class="data-grid"><div><dt>Codice</dt><dd>{{ row.item.code }}</dd></div><div><dt>Quantità</dt><dd>{{ row.item.quantity }}</dd></div><div><dt>Descrizione</dt><dd>{{ row.item.description|default:"—" }}</dd></div><div><dt>Revisione</dt><dd>{{ row.item.revision|default:"—" }}</dd></div><div><dt>Dimensioni</dt><dd>{{ row.item.dimensions|default:"—" }}</dd></div><div><dt>Note tecniche</dt><dd>{{ row.item.technical_notes|default:"—" }}</dd></div></dl>
+        <dl class="data-grid"><div><dt>Codice</dt><dd>{{ row.item.code }}</dd></div><div><dt>Revisione</dt><dd>{{ row.item.revision }}</dd></div><div><dt>Data</dt><dd>{{ row.item.article_date|date:"d/m/Y" }}</dd></div><div><dt>Quantità</dt><dd>{{ row.item.quantity }}</dd></div><div><dt>Descrizione</dt><dd>{{ row.item.description|default:"—" }}</dd></div><div><dt>Dimensioni</dt><dd>{{ row.item.dimensions_display|default:"—" }}</dd></div><div><dt>Note tecniche</dt><dd>{{ row.item.technical_notes|default:"—" }}</dd></div></dl>
       </section>
       {% endif %}
 
@@ -74,6 +75,18 @@
 {% empty %}<div class="empty card"><strong>Nessun articolo presente.</strong><br>Usa “Aggiungi articolo” per creare il primo blocco completo.</div>{% endfor %}
 </section>
 {{ material_costs|json_script:"material-costs-data" }}
-<div class="form-actions sticky-actions wizard-actions"><a class="button secondary" href="{% url 'quotes:general' quote.pk %}">Indietro</a><a class="button primary {% if not quote.items.exists %}disabled{% endif %}" href="{% url 'quotes:work' quote.pk %}">{% if quote.status == "archived" %}Consulta lavorazioni{% else %}Salva e continua{% endif %}</a></div>
+<dialog class="quick-dialog unit-converter-dialog" data-unit-converter-dialog aria-labelledby="unit-converter-title">
+  <form data-unit-converter-form>
+    <div class="dialog-heading"><div><h2 id="unit-converter-title">Converti misura</h2><p>Il valore convertito sarà inserito in millimetri.</p></div><button type="button" class="dialog-close" data-close-unit-converter aria-label="Chiudi">×</button></div>
+    <div class="form-grid unit-converter-grid">
+      <div class="field"><label for="unit-converter-value">Valore</label><input id="unit-converter-value" inputmode="decimal" data-unit-converter-value required></div>
+      <div class="field"><label for="unit-converter-source">Unità di partenza</label><select id="unit-converter-source" data-unit-converter-source><option value="mm">Millimetri (mm)</option><option value="cm">Centimetri (cm)</option><option value="dm">Decimetri (dm)</option><option value="m">Metri (m)</option><option value="in">Pollici (in)</option></select></div>
+      <div class="field"><label for="unit-converter-target">Campo da compilare</label><select id="unit-converter-target" data-unit-converter-target><option value="length_mm">Lunghezza</option><option value="height_mm">Altezza</option><option value="depth_mm">Profondità</option></select></div>
+    </div>
+    <p class="unit-converter-result" data-unit-converter-result aria-live="polite">Inserisci una misura da convertire.</p>
+    <div class="form-actions"><button class="button secondary" type="button" data-close-unit-converter>Annulla</button><button class="button primary" type="submit">Inserisci in millimetri</button></div>
+  </form>
+</dialog>
+<div class="form-actions sticky-actions wizard-actions"><a class="button secondary" href="{% url 'quotes:general' quote.pk %}">Indietro</a><a class="button primary {% if not quote.items.exists %}disabled{% endif %}" href="{% url 'quotes:work' quote.pk %}">{% if quote.status == "archived" %}Consulta lavorazioni{% else %}Continua{% endif %}</a></div>
 </div>
 {% endblock %}

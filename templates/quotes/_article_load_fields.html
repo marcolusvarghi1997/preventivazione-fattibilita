@@ -1,0 +1,21 @@
+{% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+{% if form.non_field_errors %}<div class="field-error full" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+
+<section class="article-section article-section--essential article-load-section">
+  <div class="article-section-heading">
+    <div><span class="eyebrow">Prima fase</span><h2>Carica articolo</h2></div>
+    <p>Cerca un articolo esistente oppure inserisci un nuovo codice e revisione.</p>
+  </div>
+  <div class="article-load-grid">
+    <div class="field field-code {% if form.code.errors %}has-error{% endif %}">
+      <label for="{{ form.code.id_for_label }}">{{ form.code.label }} <span aria-label="obbligatorio">*</span></label>
+      <div class="autocomplete">
+        {{ form.code }}
+        <ul class="autocomplete-results article-autocomplete-results" role="listbox" data-article-results hidden></ul>
+      </div>
+      {% for error in form.code.errors %}<div class="field-error" role="alert">{{ error }}</div>{% endfor %}
+      <small class="field-help">I risultati mostrano l’ultima data disponibile per ogni coppia codice e revisione.</small>
+    </div>
+    {% include "quotes/_field.html" with field=form.revision %}
+  </div>
+</section>

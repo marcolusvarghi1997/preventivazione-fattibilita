@@ -2,7 +2,7 @@
 {% block title %}Gestione LAN{% endblock %}
 {% block content %}
 <div class="page-heading">
-  <div><span class="eyebrow">Solo superadmin</span><h1>Gestione rete locale</h1><p>Autorizza o blocca ogni PC rilevato, con effetto immediato.</p></div>
+  <div><span class="eyebrow">Solo superadmin</span><h1>Gestione rete locale</h1><p>Autorizza o blocca ogni identità IP + MAC rilevata, con effetto immediato.</p></div>
   <div class="page-heading-status"><span class="status large-status {% if pending_count %}draft{% else %}completed{% endif %}">{% if pending_count %}{{ pending_count }} in attesa{% else %}Nessuna richiesta in attesa{% endif %}</span></div>
 </div>
 
@@ -10,25 +10,26 @@
   <section class="card lan-control" aria-labelledby="lan-access-title">
     <span class="eyebrow">Controllo accessi</span>
     <h2 id="lan-access-title">PC rilevati</h2>
-    <p>“Sì” consente l’uso dell’applicazione da quell’IP; “No” lo blocca. Ogni utente dovrà comunque accedere con le proprie credenziali.</p>
+    <p>“Sì” consente l’uso dell’applicazione soltanto quando coincidono sia l’IP sia il MAC rilevati. Se il MAC cambia, il PC torna automaticamente in attesa. Ogni utente dovrà comunque accedere con le proprie credenziali.</p>
     {% if lan_devices %}
       <div class="table-wrap lan-access-table">
         <table>
-          <thead><tr><th>Indirizzo IP</th><th>Stato</th><th>Prima richiesta</th><th>Ultima richiesta</th><th>Accesso</th></tr></thead>
+          <thead><tr><th>Indirizzo IP</th><th>Indirizzo MAC</th><th>Stato</th><th>Prima richiesta</th><th>Ultima richiesta</th><th>Accesso</th></tr></thead>
           <tbody>
             {% for device in lan_devices %}
               <tr>
-                <td><strong><code>{{ device.ip_address }}</code></strong>{% if device.ip_address == current_ip %}<small class="current-device-label">Questo PC</small>{% endif %}</td>
+                <td><strong><code>{{ device.ip_address }}</code></strong>{% if device.ip_address == current_ip and device.mac_address == current_mac %}<small class="current-device-label">Questo PC</small>{% endif %}</td>
+                <td>{% if device.mac_address %}<strong><code>{{ device.mac_address }}</code></strong>{% else %}<span class="warning-text">Non rilevato</span><small>Autorizzazione non disponibile</small>{% endif %}</td>
                 <td><span class="status {% if device.status == 'allowed' %}completed{% elif device.status == 'denied' %}rejected{% else %}draft{% endif %}">{{ device.get_status_display }}</span></td>
                 <td>{{ device.first_seen_at|date:"d/m/Y H:i" }}</td>
                 <td>{{ device.last_seen_at|date:"d/m/Y H:i" }}<small>{{ device.request_count }} richiest{{ device.request_count|pluralize:"a,e" }} rilevat{{ device.request_count|pluralize:"a,e" }}</small></td>
                 <td>
                   <div class="lan-action-group">
                     <form method="post" action="{% url 'catalog:decide_lan_access' device.pk %}" class="lan-decision-form">{% csrf_token %}
-                      <button class="button success small" type="submit" name="decision" value="allow" {% if device.status == 'allowed' %}disabled{% endif %}>Sì</button>
+                      <button class="button success small" type="submit" name="decision" value="allow" {% if device.status == 'allowed' or not device.mac_address %}disabled{% endif %}{% if not device.mac_address %} title="Il MAC deve essere rilevato prima dell’autorizzazione"{% endif %}>Sì</button>
                       <button class="button danger small" type="submit" name="decision" value="deny" {% if device.status == 'denied' %}disabled{% endif %}>No</button>
                     </form>
-                    <form method="post" action="{% url 'catalog:delete_lan_access' device.pk %}" data-confirm="Rimuovere la richiesta del dispositivo {{ device.ip_address }}? Se il PC si collegherà di nuovo verrà creata una nuova richiesta.">{% csrf_token %}
+                    <form method="post" action="{% url 'catalog:delete_lan_access' device.pk %}" data-confirm="Rimuovere la richiesta del dispositivo {{ device.ip_address }}{% if device.mac_address %} / {{ device.mac_address }}{% endif %}? Se il PC si collegherà di nuovo verrà creata una nuova richiesta.">{% csrf_token %}
                       <button class="button danger small" type="submit">Rimuovi</button>
                     </form>
                   </div>
@@ -61,7 +62,7 @@
     {% endif %}
     <section class="card summary-card">
       <span class="eyebrow">Sicurezza</span><h2>Solo rete aziendale</h2>
-      <p class="field-help">Usa questo collegamento esclusivamente nella rete aziendale o tramite VPN. Il firewall deve consentire la porta {{ server_port }} solo sulle interfacce previste. Non esporre l’applicazione direttamente su Internet.</p>
+      <p class="field-help">Il MAC è ricavato dalla tabella di rete del server e non da dati inviati dal browser. Può essere verificato soltanto sullo stesso segmento di rete locale; attraverso router o alcune VPN potrebbe non essere disponibile. In quel caso l’accesso resta bloccato. Il controllo IP + MAC integra, ma non sostituisce, credenziali e firewall.</p>
     </section>
   </aside>
 </div>

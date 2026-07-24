@@ -6,11 +6,12 @@ from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.management import call_command
+from django.db import IntegrityError, transaction
 from django.test import TestCase
 from django.urls import reverse
 
 from apps.catalog.models import Client, ClientContact, LanDeviceAccess, Material, PhaseDefinition, ProductionResource
-from apps.catalog.network import get_lan_ipv4_addresses
+from apps.catalog.network import get_lan_ipv4_addresses, get_remote_mac, normalize_mac
 from apps.quotes.formatting import format_decimal_it, format_money, format_weight, normalize_decimal_input
 from apps.quotes.forms import (
     DirectCostForm,
@@ -18,11 +19,12 @@ from apps.quotes.forms import (
     ItemMaterialEditForm,
     ItemMaterialForm,
     QuoteItemForm,
+    QuoteSearchForm,
     QuoteSummaryForm,
     TimeOperationForm,
     TreatmentForm,
 )
-from apps.quotes.models import ItemMaterial, ItemPhase, Quote, QuoteItem, TimeOperation
+from apps.quotes.models import Feasibility, ItemMaterial, ItemPhase, Quote, QuoteItem, TimeOperation
 from config.lan_server import enable_console_ctrl_c, run as run_lan_server, stop_confirmed
 
 
@@ -54,14 +56,244 @@ class RequestedPermissionTests(TestCase):
 
     def test_superuser_can_delete_quote(self):
         superuser = get_user_model().objects.create_superuser("root", password="pass")
+        article = QuoteItem.objects.create(quote=self.other_quote, code="PRESERVATO", revision="00")
         self.client.force_login(superuser)
         response = self.client.post(reverse("quotes:delete", args=[self.other_quote.pk]))
         self.assertRedirects(response, reverse("quotes:dashboard"))
         self.assertFalse(Quote.objects.filter(pk=self.other_quote.pk).exists())
+        article.refresh_from_db()
+        self.assertIsNone(article.quote)
 
     def test_preventivi_root_points_to_dashboard(self):
         self.client.force_login(self.owner)
         self.assertEqual(self.client.get("/preventivi/").status_code, 200)
+
+    def test_dashboard_is_paginated_at_twenty_rows(self):
+        for _ in range(20):
+            Quote.objects.create(author=self.owner)
+        self.client.force_login(self.owner)
+
+        first_page = self.client.get(reverse("quotes:dashboard"))
+        second_page = self.client.get(reverse("quotes:dashboard"), {"page": 2})
+
+        self.assertEqual(first_page.context["page"].paginator.per_page, 20)
+        self.assertEqual(len(first_page.context["quotes"]), 20)
+        self.assertTrue(first_page.context["page"].has_next())
+        self.assertEqual(len(second_page.context["quotes"]), 1)
+
+    def test_search_is_paginated_at_fifty_rows(self):
+        for _ in range(50):
+            Quote.objects.create(author=self.owner)
+        self.client.force_login(self.owner)
+
+        first_page = self.client.get(reverse("quotes:search"))
+        second_page = self.client.get(reverse("quotes:search"), {"page": 2})
+
+        self.assertEqual(first_page.context["page"].paginator.per_page, 50)
+        self.assertEqual(len(first_page.context["page"].object_list), 50)
+        self.assertTrue(first_page.context["page"].has_next())
+        self.assertEqual(len(second_page.context["page"].object_list), 1)
+
+    def test_dashboard_columns_are_sortable(self):
+        Quote.objects.create(author=self.owner, number="AAA")
+        Quote.objects.create(author=self.owner, number="ZZZ")
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse("quotes:dashboard"), {"sort": "number", "dir": "asc"})
+
+        numbers = [quote.number for quote in response.context["quotes"]]
+        self.assertEqual(numbers, sorted(numbers))
+        self.assertContains(response, 'aria-sort="ascending"', html=False)
+
+    def test_search_sorts_by_first_article_code(self):
+        first = Quote.objects.create(author=self.owner, number="SORT-1")
+        second = Quote.objects.create(author=self.owner, number="SORT-2")
+        QuoteItem.objects.create(quote=first, code="ZZZ")
+        QuoteItem.objects.create(quote=second, code="AAA")
+        self.client.force_login(self.owner)
+
+        response = self.client.get(
+            reverse("quotes:search"),
+            {"q": "SORT-", "sort": "articles", "dir": "asc"},
+        )
+
+        self.assertEqual([quote.pk for quote in response.context["page"]], [second.pk, first.pk])
+
+    def test_quote_rows_show_colored_feasibility_and_open_as_a_whole(self):
+        Quote.objects.create(author=self.owner, feasibility=Feasibility.INTERNAL)
+        Quote.objects.create(author=self.owner, feasibility=Feasibility.NOT_FEASIBLE)
+        self.client.force_login(self.owner)
+
+        response = self.client.get(reverse("quotes:dashboard"))
+
+        self.assertContains(response, "feasibility-text internal")
+        self.assertContains(response, "feasibility-text to-check")
+        self.assertContains(response, "feasibility-text not-feasible")
+        self.assertContains(response, 'data-row-href="', html=False)
+        self.assertNotContains(response, ">Apri</a>", html=False)
+
+    def test_dashboard_exposes_only_bulk_archiving(self):
+        self.client.force_login(self.owner)
+        response = self.client.get(reverse("quotes:dashboard"))
+
+        self.assertContains(response, 'name="quote_ids"', html=False)
+        self.assertContains(response, "Archivia multipli")
+        self.assertContains(response, "Archivia selezionati")
+        self.assertContains(response, "Archivia tutti")
+        self.assertContains(response, "data-bulk-only hidden", html=False)
+        self.assertNotContains(response, "Elimina selezionati")
+        self.assertContains(response, reverse("quotes:bulk_archive"))
+
+    def test_bulk_archive_updates_only_selected_visible_quotes(self):
+        second_selected = Quote.objects.create(author=self.owner)
+        unselected = Quote.objects.create(author=self.owner)
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("quotes:bulk_archive"),
+            {
+                "scope": "selected",
+                "quote_ids": [
+                    str(self.owner_quote.pk),
+                    str(second_selected.pk),
+                    str(self.other_quote.pk),
+                ]
+            },
+            follow=True,
+        )
+
+        self.owner_quote.refresh_from_db()
+        second_selected.refresh_from_db()
+        unselected.refresh_from_db()
+        self.other_quote.refresh_from_db()
+        self.assertEqual(self.owner_quote.status, Quote.Status.ARCHIVED)
+        self.assertEqual(second_selected.status, Quote.Status.ARCHIVED)
+        self.assertEqual(self.owner_quote.status_before_archive, Quote.Status.DRAFT)
+        self.assertEqual(second_selected.status_before_archive, Quote.Status.DRAFT)
+        self.assertNotEqual(unselected.status, Quote.Status.ARCHIVED)
+        self.assertNotEqual(self.other_quote.status, Quote.Status.ARCHIVED)
+        self.assertTrue(Quote.objects.filter(pk=self.owner_quote.pk).exists())
+        self.assertContains(response, "2 preventivi archiviati")
+
+    def test_bulk_archive_without_selection_does_not_change_quotes(self):
+        self.client.force_login(self.owner)
+        response = self.client.post(reverse("quotes:bulk_archive"), follow=True)
+
+        self.owner_quote.refresh_from_db()
+        self.assertNotEqual(self.owner_quote.status, Quote.Status.ARCHIVED)
+        self.assertContains(response, "Seleziona almeno un preventivo")
+
+    def test_bulk_archive_accepts_only_post(self):
+        self.client.force_login(self.owner)
+        self.assertEqual(self.client.get(reverse("quotes:bulk_archive")).status_code, 405)
+
+    def test_archive_all_archives_every_visible_active_quote_and_keeps_previous_status(self):
+        completed = Quote.objects.create(author=self.owner, status=Quote.Status.COMPLETED)
+        rejected = Quote.objects.create(author=self.owner, status=Quote.Status.REJECTED)
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("quotes:bulk_archive"),
+            {"scope": "all"},
+            follow=True,
+        )
+
+        self.owner_quote.refresh_from_db()
+        completed.refresh_from_db()
+        rejected.refresh_from_db()
+        self.other_quote.refresh_from_db()
+        self.assertEqual(self.owner_quote.status_before_archive, Quote.Status.DRAFT)
+        self.assertEqual(completed.status_before_archive, Quote.Status.COMPLETED)
+        self.assertEqual(rejected.status_before_archive, Quote.Status.REJECTED)
+        self.assertTrue(all(
+            quote.status == Quote.Status.ARCHIVED
+            for quote in (self.owner_quote, completed, rejected)
+        ))
+        self.assertNotEqual(self.other_quote.status, Quote.Status.ARCHIVED)
+        self.assertContains(response, "3 preventivi archiviati")
+
+    def test_archived_status_is_not_displayed_or_filtered_as_draft(self):
+        archived = Quote.objects.create(
+            author=self.owner,
+            status=Quote.Status.ARCHIVED,
+            status_before_archive=Quote.Status.COMPLETED,
+            customer_decision=Quote.CustomerDecision.ACCEPTED,
+        )
+        self.client.force_login(self.owner)
+
+        archived_response = self.client.get(
+            reverse("quotes:search"),
+            {"status": Quote.Status.ARCHIVED},
+        )
+        draft_response = self.client.get(
+            reverse("quotes:search"),
+            {"status": Quote.Status.DRAFT},
+        )
+
+        self.assertEqual(archived.display_status, "Archiviato")
+        self.assertEqual(archived.status_css_class, "archived")
+        self.assertContains(archived_response, archived.number)
+        self.assertContains(archived_response, "Archiviato")
+        self.assertNotContains(draft_response, archived.number)
+
+    def test_bulk_restore_restores_only_selected_own_quotes(self):
+        completed = Quote.objects.create(
+            author=self.owner,
+            status=Quote.Status.ARCHIVED,
+            status_before_archive=Quote.Status.COMPLETED,
+        )
+        rejected = Quote.objects.create(
+            author=self.owner,
+            status=Quote.Status.ARCHIVED,
+            status_before_archive=Quote.Status.REJECTED,
+        )
+        other_archived = Quote.objects.create(
+            author=self.other,
+            status=Quote.Status.ARCHIVED,
+            status_before_archive=Quote.Status.COMPLETED,
+        )
+        self.client.force_login(self.owner)
+
+        response = self.client.post(
+            reverse("quotes:bulk_restore"),
+            {
+                "scope": "selected",
+                "quote_ids": [str(completed.pk), str(other_archived.pk)],
+            },
+            follow=True,
+        )
+
+        completed.refresh_from_db()
+        rejected.refresh_from_db()
+        other_archived.refresh_from_db()
+        self.assertEqual(completed.status, Quote.Status.COMPLETED)
+        self.assertEqual(completed.status_before_archive, "")
+        self.assertEqual(rejected.status, Quote.Status.ARCHIVED)
+        self.assertEqual(other_archived.status, Quote.Status.ARCHIVED)
+        self.assertContains(response, "1 preventivo ripristinato")
+
+    def test_restore_all_respects_current_search_filters(self):
+        matching = Quote.objects.create(
+            author=self.owner,
+            status=Quote.Status.ARCHIVED,
+            status_before_archive=Quote.Status.COMPLETED,
+        )
+        not_matching = Quote.objects.create(
+            author=self.owner,
+            status=Quote.Status.ARCHIVED,
+            status_before_archive=Quote.Status.REJECTED,
+        )
+        self.client.force_login(self.owner)
+
+        self.client.post(
+            f"{reverse('quotes:bulk_restore')}?q={matching.number}",
+            {"scope": "all"},
+        )
+
+        matching.refresh_from_db()
+        not_matching.refresh_from_db()
+        self.assertEqual(matching.status, Quote.Status.COMPLETED)
+        self.assertEqual(not_matching.status, Quote.Status.ARCHIVED)
 
 
 class RequestedEconomicRuleTests(TestCase):
@@ -77,6 +309,7 @@ class RequestedEconomicRuleTests(TestCase):
         self.item = QuoteItem.objects.create(
             quote=self.quote,
             code="EXT-01",
+            revision="00",
             quantity=2,
             external_purchases=True,
             external_purchases_cost=Decimal("10.00"),
@@ -138,7 +371,7 @@ class RequestedEconomicRuleTests(TestCase):
             for field in form.fields.values()
             if isinstance(field, ItalianDecimalField)
         ]
-        self.assertEqual(len(decimal_fields), 12)
+        self.assertEqual(len(decimal_fields), 15)
         for field in decimal_fields:
             with self.subTest(label=field.label):
                 self.assertEqual(field.clean("12,5"), field.clean("12.5"))
@@ -152,6 +385,8 @@ class RequestedEconomicRuleTests(TestCase):
         ]
         self.assertEqual(list(QuoteItemForm().fields["feasibility"].choices), expected)
         self.assertEqual(list(QuoteSummaryForm().fields["feasibility"].choices), expected)
+        self.assertEqual(list(QuoteSearchForm().fields["feasibility"].choices)[1:], expected)
+        self.assertEqual(QuoteItem().feasibility, Feasibility.TO_CHECK)
 
     def test_material_editor_shows_units_without_repeating_current_values(self):
         response = self.client.get(reverse("quotes:items", args=[self.quote.pk]))
@@ -168,7 +403,7 @@ class RequestedEconomicRuleTests(TestCase):
         self.assertContains(response, "Lavorazioni e costi aggiuntivi")
         self.assertContains(response, "Dati necessari")
         self.assertContains(response, "Dettagli facoltativi")
-        self.assertContains(response, "Salva e vai al riepilogo")
+        self.assertContains(response, "Vai al riepilogo")
         self.assertContains(response, "phase-grid--production")
         self.assertContains(response, "phase-grid--additional")
 
@@ -185,7 +420,9 @@ class RequestedEconomicRuleTests(TestCase):
             "quantity": self.item.quantity,
             "description": self.item.description,
             "revision": self.item.revision,
-            "dimensions": self.item.dimensions,
+            "length_mm": "120,5",
+            "height_mm": "80",
+            "depth_mm": "",
             "technical_notes": self.item.technical_notes,
             "feasibility": self.item.feasibility,
         }, instance=self.item)
@@ -236,7 +473,17 @@ class ClientAndLanTests(TestCase):
             client=cls.client_record,
             name="Mario Rossi",
             email="mario@example.com",
+            preferred=True,
         )
+
+    def setUp(self):
+        self.detected_mac = "02:11:22:33:44:55"
+        self.mac_patcher = patch(
+            "apps.catalog.middleware.get_remote_mac",
+            return_value=self.detected_mac,
+        )
+        self.mocked_remote_mac = self.mac_patcher.start()
+        self.addCleanup(self.mac_patcher.stop)
 
     def test_registered_contact_fills_quote_snapshot_server_side(self):
         self.client.force_login(self.user)
@@ -255,6 +502,15 @@ class ClientAndLanTests(TestCase):
         self.assertEqual(quote.client_contact, "Mario Rossi")
         self.assertEqual(quote.client_email, "mario@example.com")
 
+    def test_client_can_have_only_one_preferred_contact(self):
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                ClientContact.objects.create(
+                    client=self.client_record,
+                    name="Altro preferito",
+                    preferred=True,
+                )
+
     def test_general_page_uses_only_registered_contacts(self):
         self.client.force_login(self.user)
         response = self.client.get(reverse("quotes:create"))
@@ -265,7 +521,7 @@ class ClientAndLanTests(TestCase):
         self.assertContains(response, 'name="client_contact"', html=False)
         self.assertContains(response, 'type="hidden"', html=False)
 
-    def test_wizard_success_message_is_a_dismissible_toast(self):
+    def test_wizard_forward_navigation_does_not_show_a_confirmation_banner(self):
         self.client.force_login(self.user)
         response = self.client.post(reverse("quotes:create"), {
             "date": "2026-07-23",
@@ -277,9 +533,8 @@ class ClientAndLanTests(TestCase):
             "internal_notes": "",
             "customer_notes": "",
         }, follow=True)
-        self.assertContains(response, "Dati generali salvati.")
-        self.assertContains(response, "toast-region")
-        self.assertContains(response, "data-dismiss-toast")
+        self.assertNotContains(response, "Dati generali salvati.")
+        self.assertNotContains(response, "toast-region")
 
     def test_articles_page_separates_essential_and_optional_information(self):
         quote = Quote.objects.create(author=self.user)
@@ -287,14 +542,28 @@ class ClientAndLanTests(TestCase):
         response = self.client.get(reverse("quotes:items", args=[quote.pk]))
         self.assertContains(response, "<h1>2. Articoli</h1>", html=True)
         self.assertContains(response, "sticky-actions wizard-actions")
-        self.assertContains(response, "Informazioni principali")
-        self.assertContains(response, "Dettagli tecnici aggiuntivi")
-        self.assertContains(response, "Costi supplementari facoltativi")
-        self.assertContains(response, "Materiale principale del pezzo")
-        self.assertContains(response, "article-core-fields")
-        self.assertContains(response, "article-description-panel")
-        self.assertContains(response, '<textarea name="description"', html=False)
-        self.assertNotContains(response, "(non conteggiato)")
+        self.assertContains(response, "Prima fase")
+        self.assertContains(response, "Carica articolo")
+        self.assertNotContains(response, "Dettagli tecnici aggiuntivi")
+        self.assertNotContains(response, "Costi supplementari facoltativi")
+        self.assertNotContains(response, "article-core-fields")
+        self.assertNotContains(response, "article-description-panel")
+
+        item = QuoteItem.objects.create(quote=quote, code="CARICATO-01", revision="00")
+        loaded_response = self.client.get(reverse("quotes:items", args=[quote.pk]))
+        self.assertContains(loaded_response, "Dettagli tecnici aggiuntivi")
+        self.assertContains(loaded_response, "Costi supplementari facoltativi")
+        self.assertContains(loaded_response, "Articolo caricato")
+        self.assertNotContains(loaded_response, "Seconda fase ·")
+        self.assertContains(loaded_response, "Converti misure")
+        self.assertContains(loaded_response, f'name="item-{item.pk}-length_mm"', html=False)
+        self.assertContains(loaded_response, f'name="item-{item.pk}-height_mm"', html=False)
+        self.assertContains(loaded_response, f'name="item-{item.pk}-depth_mm"', html=False)
+        self.assertContains(loaded_response, "Materiali del pezzo")
+        self.assertContains(loaded_response, "article-core-fields")
+        self.assertContains(loaded_response, "article-description-panel")
+        self.assertContains(loaded_response, f'name="item-{item.pk}-description"', html=False)
+        self.assertNotContains(loaded_response, "(non conteggiato)")
         work_response = self.client.get(reverse("quotes:work", args=[quote.pk]))
         self.assertContains(
             work_response,
@@ -378,7 +647,7 @@ class ClientAndLanTests(TestCase):
         self.assertEqual(quote.client_contact, "")
         self.assertEqual(quote.client_email, "")
 
-    def test_lan_request_is_detected_and_access_follows_ip_decision(self):
+    def test_lan_request_is_detected_and_access_follows_ip_and_mac_decision(self):
         self.client.force_login(self.user)
         response = self.client.get(reverse("quotes:dashboard"), REMOTE_ADDR="192.168.1.25")
         self.assertEqual(response.status_code, 403)
@@ -386,6 +655,7 @@ class ClientAndLanTests(TestCase):
 
         device = LanDeviceAccess.objects.get(ip_address="192.168.1.25")
         self.assertEqual(device.status, LanDeviceAccess.Status.PENDING)
+        self.assertEqual(device.mac_address, self.detected_mac)
         device.status = LanDeviceAccess.Status.ALLOWED
         device.save(update_fields=("status",))
         self.assertEqual(self.client.get(reverse("quotes:dashboard"), REMOTE_ADDR="192.168.1.25").status_code, 200)
@@ -518,6 +788,7 @@ class ClientAndLanTests(TestCase):
     def test_superuser_can_allow_and_revoke_a_detected_ip(self):
         device = LanDeviceAccess.objects.create(
             ip_address="192.168.1.40",
+            mac_address=self.detected_mac,
             last_seen_at="2026-07-23T08:00:00Z",
         )
         decision_url = reverse("catalog:decide_lan_access", args=[device.pk])
@@ -542,6 +813,7 @@ class ClientAndLanTests(TestCase):
         remote_ip = "194.150.150.61"
         device = LanDeviceAccess.objects.create(
             ip_address=remote_ip,
+            mac_address=self.detected_mac,
             status=LanDeviceAccess.Status.ALLOWED,
             last_seen_at="2026-07-23T08:00:00Z",
         )
@@ -588,6 +860,65 @@ class ClientAndLanTests(TestCase):
         self.assertRedirects(self.client.post(delete_url), reverse("catalog:lan_settings"))
         self.assertFalse(LanDeviceAccess.objects.filter(pk=device.pk).exists())
 
+    def test_allow_is_rejected_until_mac_is_detected(self):
+        device = LanDeviceAccess.objects.create(
+            ip_address="192.168.1.63",
+            last_seen_at="2026-07-23T08:00:00Z",
+        )
+        self.client.force_login(self.superuser)
+
+        response = self.client.post(
+            reverse("catalog:decide_lan_access", args=[device.pk]),
+            {"decision": "allow"},
+            follow=True,
+        )
+
+        device.refresh_from_db()
+        self.assertEqual(device.status, LanDeviceAccess.Status.PENDING)
+        self.assertContains(response, "non può essere autorizzato finché il MAC non viene rilevato")
+
+    def test_changed_mac_resets_an_allowed_ip_to_pending(self):
+        remote_ip = "192.168.1.64"
+        device = LanDeviceAccess.objects.create(
+            ip_address=remote_ip,
+            mac_address=self.detected_mac,
+            status=LanDeviceAccess.Status.ALLOWED,
+            last_seen_at="2026-07-23T08:00:00Z",
+            decided_at="2026-07-23T08:05:00Z",
+            decided_by=self.superuser,
+        )
+        changed_mac = "02:AA:BB:CC:DD:EE"
+
+        with patch("apps.catalog.middleware.get_remote_mac", return_value=changed_mac):
+            response = self.client.get(reverse("login"), REMOTE_ADDR=remote_ip)
+
+        self.assertEqual(response.status_code, 403)
+        device.refresh_from_db()
+        self.assertEqual(device.mac_address, changed_mac)
+        self.assertEqual(device.status, LanDeviceAccess.Status.PENDING)
+        self.assertIsNone(device.decided_at)
+        self.assertIsNone(device.decided_by)
+
+    def test_allowed_ip_is_blocked_when_mac_cannot_be_verified(self):
+        remote_ip = "192.168.1.65"
+        LanDeviceAccess.objects.create(
+            ip_address=remote_ip,
+            mac_address=self.detected_mac,
+            status=LanDeviceAccess.Status.ALLOWED,
+            last_seen_at="2026-07-23T08:00:00Z",
+        )
+
+        with patch("apps.catalog.middleware.get_remote_mac", return_value=None):
+            response = self.client.get(
+                reverse("login"),
+                REMOTE_ADDR=remote_ip,
+                HTTP_X_DEVICE_MAC=self.detected_mac,
+            )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertContains(response, "Identità di rete non verificabile", status_code=403)
+        self.assertContains(response, "Non disponibile", status_code=403)
+
     def test_remote_superuser_can_open_lan_management_without_prior_approval(self):
         remote_ip = "192.168.1.77"
         self.client.force_login(self.superuser)
@@ -597,9 +928,18 @@ class ClientAndLanTests(TestCase):
             200,
         )
         self.assertTrue(LanDeviceAccess.objects.filter(ip_address=remote_ip).exists())
+        self.assertEqual(
+            self.client.get(reverse("quotes:dashboard"), REMOTE_ADDR=remote_ip).status_code,
+            403,
+        )
 
     @patch("apps.catalog.network.get_lan_ipv4_addresses", return_value=["192.168.1.10"])
     def test_lan_page_shows_readonly_server_network_info(self, mocked_addresses):
+        LanDeviceAccess.objects.create(
+            ip_address="192.168.1.80",
+            mac_address=self.detected_mac,
+            last_seen_at="2026-07-23T08:00:00Z",
+        )
         self.client.force_login(self.superuser)
         response = self.client.get(reverse("catalog:lan_settings"), HTTP_HOST="server.test:8765", SERVER_PORT="8765")
         self.assertContains(response, "Informazioni di rete in sola lettura")
@@ -607,6 +947,8 @@ class ClientAndLanTests(TestCase):
         self.assertContains(response, "192.168.1.10")
         self.assertContains(response, "<code>8765</code>", html=True)
         self.assertContains(response, "http://192.168.1.10:8765")
+        self.assertContains(response, "Indirizzo MAC")
+        self.assertContains(response, "IP + MAC")
 
     def test_dashboard_does_not_show_lan_data(self):
         self.client.force_login(self.superuser)
@@ -628,3 +970,21 @@ class ClientAndLanTests(TestCase):
             (2, 1, 6, "", ("127.0.0.1", 0)),
         ]
         self.assertEqual(get_lan_ipv4_addresses(), ["194.150.150.33"])
+
+    @patch("apps.catalog.network.subprocess.run")
+    def test_remote_mac_is_read_from_server_neighbor_table(self, mocked_run):
+        mocked_run.return_value.returncode = 0
+        mocked_run.return_value.stdout = (
+            "\n  Indirizzo Internet      Indirizzo fisico      Tipo\n"
+            "  192.168.1.70            02-aa-bb-cc-dd-ee     dinamico\n"
+        )
+
+        self.assertEqual(get_remote_mac("192.168.1.70"), "02:AA:BB:CC:DD:EE")
+        self.assertEqual(mocked_run.call_args.kwargs["check"], False)
+        self.assertNotIn("shell", mocked_run.call_args.kwargs)
+
+    def test_mac_normalization_rejects_unsafe_addresses(self):
+        self.assertEqual(normalize_mac("02-aa-bb-cc-dd-ee"), "02:AA:BB:CC:DD:EE")
+        self.assertIsNone(normalize_mac("01:00:5E:00:00:01"))
+        self.assertIsNone(normalize_mac("FF:FF:FF:FF:FF:FF"))
+        self.assertIsNone(normalize_mac("non-un-mac"))

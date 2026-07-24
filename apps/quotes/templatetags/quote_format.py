@@ -5,6 +5,15 @@ from apps.quotes.formatting import format_decimal_it, format_money, format_weigh
 register = template.Library()
 
 
+@register.simple_tag(takes_context=True)
+def sort_url(context, field, current_sort, current_direction):
+    params = context["request"].GET.copy()
+    params.pop("page", None)
+    params["sort"] = field
+    params["dir"] = "desc" if current_sort == field and current_direction == "asc" else "asc"
+    return f"?{params.urlencode()}"
+
+
 @register.filter
 def decimal_it(value, places=2):
     try:

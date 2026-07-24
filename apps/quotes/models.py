@@ -13,8 +13,8 @@ ZERO = Decimal("0")
 
 
 class Feasibility(models.TextChoices):
-    TO_CHECK = "to_check", "Da verificare"
     INTERNAL = "internal", "Fattibile internamente"
+    TO_CHECK = "to_check", "Da verificare"
     NOT_FEASIBLE = "not_feasible", "Non fattibile"
 
 
@@ -54,6 +54,13 @@ class Quote(models.Model):
     number = models.CharField("Numero", max_length=30, unique=True, blank=True, db_index=True)
     date = models.DateField("Data", default=timezone.localdate, db_index=True)
     status = models.CharField("Stato", max_length=20, choices=Status.choices, default=Status.DRAFT, db_index=True)
+    status_before_archive = models.CharField(
+        "Stato precedente all’archiviazione",
+        max_length=20,
+        blank=True,
+        default="",
+        editable=False,
+    )
     client = models.ForeignKey(Client, on_delete=models.PROTECT, null=True, blank=True, related_name="quotes", verbose_name="Cliente")
     client_contact = models.CharField("Referente cliente", max_length=150, blank=True)
     client_email = models.EmailField("Email referente", blank=True)
@@ -67,6 +74,11 @@ class Quote(models.Model):
         choices=CustomerDecision.choices,
         default=CustomerDecision.PENDING,
         db_index=True,
+    )
+    last_workflow_step = models.PositiveSmallIntegerField(
+        "Ultimo passaggio visitato",
+        default=2,
+        editable=False,
     )
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="quotes", verbose_name="Autore")
     created_at = models.DateTimeField("Creato il", auto_now_add=True)
@@ -110,31 +122,72 @@ class Quote(models.Model):
 
     @property
     def display_status(self) -> str:
+        if self.status == self.Status.ARCHIVED:
+            return "Archiviato"
         if self.status == self.Status.REJECTED or self.customer_decision == self.CustomerDecision.REJECTED:
             return "Rifiutato"
         if self.status == self.Status.COMPLETED or self.customer_decision == self.CustomerDecision.ACCEPTED:
             return "Completato"
-        return "Bozza"
+        return self.get_status_display()
 
     @property
     def status_css_class(self) -> str:
-        if self.display_status == "Rifiutato":
-            return "rejected"
-        if self.display_status == "Completato":
-            return "completed"
-        return "draft"
+        return {
+            "Archiviato": "archived",
+            "Rifiutato": "rejected",
+            "Completato": "completed",
+            "In lavorazione": "in-progress",
+            "Inviato": "sent",
+        }.get(self.display_status, "draft")
+
+    @property
+    def feasibility_css_class(self) -> str:
+        return {
+            Feasibility.INTERNAL: "internal",
+            Feasibility.TO_CHECK: "to-check",
+            Feasibility.NOT_FEASIBLE: "not-feasible",
+        }[self.feasibility]
 
     def __str__(self) -> str:
         return self.number
 
 
 class QuoteItem(models.Model):
-    quote = models.ForeignKey(Quote, on_delete=models.CASCADE, related_name="items")
+    quote = models.ForeignKey(
+        Quote,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="items",
+        verbose_name="Preventivo",
+    )
+    source_version = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="derived_versions",
+        editable=False,
+        verbose_name="Versione sorgente",
+    )
     code = models.CharField("Codice", max_length=100, db_index=True)
+    article_date = models.DateField("Data articolo", default=timezone.localdate, db_index=True, editable=False)
     quantity = models.PositiveIntegerField("Quantita", default=1, validators=[MinValueValidator(1)])
     description = models.CharField("Descrizione", max_length=250, blank=True, db_index=True)
-    revision = models.CharField("Revisione", max_length=50, blank=True)
-    dimensions = models.CharField("Dimensioni", max_length=150, blank=True)
+    revision = models.CharField("Revisione", max_length=50)
+    legacy_dimensions = models.CharField("Dimensioni", max_length=150, blank=True)
+    length_mm = models.DecimalField(
+        "Lunghezza", max_digits=12, decimal_places=3, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0.001"))],
+    )
+    height_mm = models.DecimalField(
+        "Altezza", max_digits=12, decimal_places=3, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0.001"))],
+    )
+    depth_mm = models.DecimalField(
+        "Profondità", max_digits=12, decimal_places=3, null=True, blank=True,
+        validators=[MinValueValidator(Decimal("0.001"))],
+    )
     technical_notes = models.TextField("Note tecniche", blank=True)
     feasibility = models.CharField("Fattibilita articolo", max_length=20, choices=Feasibility.choices, default=Feasibility.TO_CHECK)
     external_purchases = models.BooleanField("Acquisti esterni", default=False)
@@ -154,13 +207,32 @@ class QuoteItem(models.Model):
     )
     feasibility_manually_set = models.BooleanField(default=False, editable=False)
     display_order = models.PositiveSmallIntegerField(default=1)
+    creation_token = models.UUIDField(null=True, blank=True, unique=True, editable=False)
 
     class Meta:
         verbose_name = "articolo"
-        verbose_name_plural = "articoli"
+        verbose_name_plural = "storico articoli"
         ordering = ["display_order", "id"]
-        indexes = [models.Index(fields=["code", "description"])]
-        constraints = [models.CheckConstraint(condition=models.Q(quantity__gte=1), name="item_quantity_positive")]
+        indexes = [
+            models.Index(fields=["code", "description"]),
+            models.Index(fields=["code", "-article_date"], name="quoteitem_code_date_idx"),
+            models.Index(fields=["code", "revision", "-article_date"], name="quoteitem_key_date_idx"),
+        ]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(quantity__gte=1), name="item_quantity_positive"),
+            models.CheckConstraint(condition=models.Q(length_mm__isnull=True) | models.Q(length_mm__gt=0), name="item_length_positive"),
+            models.CheckConstraint(condition=models.Q(height_mm__isnull=True) | models.Q(height_mm__gt=0), name="item_height_positive"),
+            models.CheckConstraint(condition=models.Q(depth_mm__isnull=True) | models.Q(depth_mm__gt=0), name="item_depth_positive"),
+        ]
+
+    @property
+    def dimensions_display(self) -> str:
+        values = (("L", self.length_mm), ("A", self.height_mm), ("P", self.depth_mm))
+        dimensions = " × ".join(
+            f"{label} {format(value.normalize(), 'f').replace('.', ',')} mm"
+            for label, value in values if value is not None
+        )
+        return dimensions or self.legacy_dimensions
 
     @property
     def material_cost(self) -> Decimal:

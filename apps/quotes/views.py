@@ -5,20 +5,31 @@ from django.contrib.auth.decorators import login_required, permission_required
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import F, Min, Q
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST
+from django.urls import reverse
+from django.views.decorators.http import require_GET, require_POST
 
 from .forms import (
-    DirectCostForm, ItemMaterialEditForm, ItemMaterialForm, PhaseForm, QuickClientForm,
+    ArticleLoadForm, DirectCostForm, ItemMaterialEditForm, ItemMaterialForm, PhaseForm, QuickClientForm,
     QuickClientContactForm, QuoteGeneralForm, QuoteItemForm, QuoteSearchForm, QuoteSummaryForm,
     TimeOperationForm, TreatmentForm,
 )
 from apps.catalog.models import Client, ClientContact, Material
 from .models import DirectCost, ExternalTreatment, Feasibility, ItemMaterial, ItemPhase, Quote, QuoteItem, TimeOperation
 from .phases import phase_registry
-from .services.quotes import duplicate_item, duplicate_quote, initialize_item_phases
+from .services.quotes import (
+    ArticleVersionConflict,
+    archive_quotes,
+    create_article_version_from_latest,
+    duplicate_item,
+    duplicate_quote,
+    initialize_item_phases,
+    latest_article_version,
+    restore_quotes,
+    search_latest_article_versions,
+)
 from .services.validation import validate_quote
 
 
@@ -32,8 +43,79 @@ def quote_queryset(user=None):
     return queryset
 
 
+def apply_quote_filters(queryset, data):
+    if data["q"]:
+        term = data["q"]
+        queryset = queryset.filter(
+            Q(number__icontains=term)
+            | Q(client__name__icontains=term)
+            | Q(items__code__icontains=term)
+            | Q(items__description__icontains=term)
+        ).distinct()
+    if data["status"]:
+        if data["status"] == Quote.Status.DRAFT:
+            queryset = queryset.filter(
+                status=Quote.Status.DRAFT,
+                customer_decision=Quote.CustomerDecision.PENDING,
+            )
+        elif data["status"] == Quote.Status.COMPLETED:
+            queryset = queryset.exclude(status=Quote.Status.ARCHIVED).filter(
+                Q(status=Quote.Status.COMPLETED)
+                | Q(customer_decision=Quote.CustomerDecision.ACCEPTED)
+            )
+        elif data["status"] == Quote.Status.REJECTED:
+            queryset = queryset.exclude(status=Quote.Status.ARCHIVED).filter(
+                Q(status=Quote.Status.REJECTED)
+                | Q(customer_decision=Quote.CustomerDecision.REJECTED)
+            )
+        else:
+            queryset = queryset.filter(status=data["status"])
+    if data["feasibility"]:
+        queryset = queryset.filter(feasibility=data["feasibility"])
+    if data["date_from"]:
+        queryset = queryset.filter(date__gte=data["date_from"])
+    if data["date_to"]:
+        queryset = queryset.filter(date__lte=data["date_to"])
+    return queryset
+
+
+def sort_quotes(queryset, request, fields):
+    sort = request.GET.get("sort", "date")
+    direction = request.GET.get("dir", "desc")
+    if sort not in fields:
+        sort = "date"
+    if direction not in {"asc", "desc"}:
+        direction = "desc"
+    field = fields[sort]
+    if field == "article_code":
+        queryset = queryset.annotate(article_code=Min("items__code"))
+    prefix = "-" if direction == "desc" else ""
+    return queryset.order_by(f"{prefix}{field}", f"{prefix}id"), sort, direction
+
+
 def get_quote(request: HttpRequest, pk: int) -> Quote:
     return get_object_or_404(quote_queryset(request.user), pk=pk)
+
+
+def record_workflow_step(quote: Quote, step: int) -> None:
+    if quote.last_workflow_step != step:
+        Quote.objects.filter(pk=quote.pk).update(last_workflow_step=step)
+        quote.last_workflow_step = step
+
+
+@login_required
+@permission_required("quotes.view_quote", raise_exception=True)
+def quote_resume(request: HttpRequest, pk: int) -> HttpResponse:
+    quote = get_quote(request, pk)
+    if (
+        quote.status in {Quote.Status.COMPLETED, Quote.Status.REJECTED, Quote.Status.SENT, Quote.Status.ARCHIVED}
+        or quote.customer_decision != Quote.CustomerDecision.PENDING
+    ):
+        return redirect("quotes:summary", pk=pk)
+    if not quote.items.exists():
+        return redirect("quotes:items", pk=pk)
+    route = {1: "quotes:general", 2: "quotes:items", 3: "quotes:work", 4: "quotes:summary"}
+    return redirect(route.get(quote.last_workflow_step, "quotes:items"), pk=pk)
 
 
 def editable_quote_required(view_func):
@@ -79,13 +161,22 @@ def build_item_rows(quote: Quote, *, item_override=None, material_override=None)
     return rows
 
 
-def render_items(request, quote, *, item_form=None, material_form=None, draft_item_form=None, draft_material_form=None, status=200):
+def render_items(
+    request,
+    quote,
+    *,
+    item_form=None,
+    material_form=None,
+    draft_load_form=None,
+    open_item_id=None,
+    status=200,
+):
     return render(request, "quotes/items.html", {
         "quote": quote,
         "item_rows": build_item_rows(quote, item_override=item_form, material_override=material_form),
-        "draft_item_form": draft_item_form or QuoteItemForm(),
-        "draft_material_form": draft_material_form or ItemMaterialForm(),
-        "show_draft": bool(draft_item_form or draft_material_form),
+        "article_load_form": draft_load_form or ArticleLoadForm(),
+        "show_draft": bool(draft_load_form),
+        "open_item_id": open_item_id,
         "material_costs": {
             str(material.pk): str(material.current_cost_per_kg) if material.current_cost_per_kg is not None else ""
             for material in Material.objects.filter(active=True)
@@ -97,8 +188,22 @@ def render_items(request, quote, *, item_form=None, material_form=None, draft_it
 @login_required
 @permission_required("quotes.view_quote", raise_exception=True)
 def dashboard(request: HttpRequest) -> HttpResponse:
-    quotes = quote_queryset(request.user).exclude(status=Quote.Status.ARCHIVED)[:12]
-    return render(request, "quotes/dashboard.html", {"quotes": quotes})
+    queryset = quote_queryset(request.user).exclude(status=Quote.Status.ARCHIVED)
+    queryset, sort, direction = sort_quotes(queryset, request, {
+        "number": "number", "client": "client__name", "date": "date",
+        "status": "status", "feasibility": "feasibility", "price": "offered_price",
+    })
+    page = Paginator(queryset, 20).get_page(request.GET.get("page"))
+    query_params = request.GET.copy()
+    query_params.pop("page", None)
+    return render(
+        request,
+        "quotes/dashboard.html",
+        {
+            "quotes": page.object_list, "page": page, "sort": sort, "direction": direction,
+            "dashboard_query": query_params.urlencode(),
+        },
+    )
 
 
 @login_required
@@ -108,15 +213,19 @@ def quote_general(request: HttpRequest, pk: int | None = None) -> HttpResponse:
     quote = get_quote(request, pk) if pk else None
     if quote and not request.user.has_perm("quotes.change_quote"):
         raise PermissionDenied
+    if quote and request.method == "GET":
+        record_workflow_step(quote, 1)
     form = QuoteGeneralForm(request.POST or None, instance=quote)
     if request.method == "POST" and form.is_valid():
         quote = form.save(commit=False)
         if not quote.pk:
             quote.author = request.user
+        quote.last_workflow_step = 2
         quote.save()
-        messages.success(request, "Dati generali salvati.")
         return redirect("quotes:items", pk=quote.pk)
-    contacts = list(ClientContact.objects.filter(active=True, client__active=True).values("id", "client_id", "name", "email"))
+    contacts = list(ClientContact.objects.filter(active=True, client__active=True).values(
+        "id", "client_id", "name", "email", "preferred"
+    ))
     return render(request, "quotes/general.html", {
         "form": form,
         "quote": quote,
@@ -143,7 +252,10 @@ def client_quick_add(request: HttpRequest) -> JsonResponse:
     return JsonResponse({
         "ok": True,
         "client": {"id": client.pk, "name": client.name, "email": client.email, "phone": client.phone},
-        "contact": ({"id": contact.pk, "name": contact.name, "email": contact.email} if contact else None),
+        "contact": (
+            {"id": contact.pk, "name": contact.name, "email": contact.email, "preferred": contact.preferred}
+            if contact else None
+        ),
     })
 
 
@@ -172,6 +284,7 @@ def client_contact_quick_add(request: HttpRequest) -> JsonResponse:
             "name": contact.name,
             "email": contact.email,
             "phone": contact.phone,
+            "preferred": contact.preferred,
         },
     })
 
@@ -180,7 +293,35 @@ def client_contact_quick_add(request: HttpRequest) -> JsonResponse:
 @permission_required("quotes.view_quote", raise_exception=True)
 def quote_items(request: HttpRequest, pk: int) -> HttpResponse:
     quote = get_quote(request, pk)
-    return render_items(request, quote)
+    record_workflow_step(quote, 2)
+    open_item_id = request.GET.get("open_item")
+    return render_items(
+        request,
+        quote,
+        open_item_id=int(open_item_id) if open_item_id and open_item_id.isdigit() else None,
+    )
+
+
+@login_required
+@permission_required("quotes.view_quote", raise_exception=True)
+@require_GET
+def item_latest_version(request: HttpRequest, pk: int) -> JsonResponse:
+    quote = get_quote(request, pk)
+    code = (request.GET.get("code") or "").strip()
+    if not code:
+        return JsonResponse({"ok": True, "results": []})
+    added_keys = set(quote.items.values_list("code", "revision"))
+    results = []
+    for item in search_latest_article_versions(code=code):
+        results.append({
+            "id": item.pk,
+            "code": item.code,
+            "revision": item.revision,
+            "article_date": item.article_date.isoformat(),
+            "article_date_display": item.article_date.strftime("%d/%m/%Y"),
+            "already_added": (item.code, item.revision) in added_keys,
+        })
+    return JsonResponse({"ok": True, "results": results})
 
 
 @login_required
@@ -189,26 +330,80 @@ def quote_items(request: HttpRequest, pk: int) -> HttpResponse:
 @editable_quote_required
 def item_add(request: HttpRequest, pk: int) -> HttpResponse:
     quote = get_quote(request, pk)
-    form = QuoteItemForm(request.POST)
-    material_form = ItemMaterialForm(request.POST)
-    if form.is_valid() and material_form.is_valid():
-        with transaction.atomic():
-            item = form.save(commit=False)
-            item.quote = quote
-            item.display_order = quote.items.count() + 1
-            item.save()
-            material = material_form.cleaned_data["material"]
-            row = material_form.save(commit=False)
-            row.item = item
-            if row.unit_cost_snapshot is None:
-                row.unit_cost_snapshot = material.current_cost_per_kg
-            row.save()
-            initialize_item_phases(item)
-        messages.success(request, f"Articolo {item.code} aggiunto con il materiale e il costo corrente acquisito.")
-    else:
-        messages.error(request, "Articolo non aggiunto: controllare i campi indicati.")
+    form = ArticleLoadForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Articolo non caricato: controllare codice e revisione.")
         return render_items(
-            request, get_quote(request, pk), draft_item_form=form, draft_material_form=material_form, status=422
+            request, get_quote(request, pk), draft_load_form=form, status=422
+        )
+    code = form.cleaned_data["code"]
+    revision = (form.cleaned_data.get("revision") or "").strip()
+    source_version_id = form.cleaned_data.get("source_version_id")
+    creation_token = form.cleaned_data.get("creation_token")
+
+    if creation_token:
+        existing_for_token = QuoteItem.objects.filter(creation_token=creation_token).first()
+        if existing_for_token:
+            if existing_for_token.quote_id == quote.pk:
+                messages.info(request, f"Articolo {existing_for_token.code} già aggiunto; il doppio invio è stato ignorato.")
+                return redirect("quotes:items", pk=pk)
+            form.add_error(None, "La richiesta di creazione non è valida. Ricarica la pagina e riprova.")
+
+    if not form.errors and source_version_id:
+        try:
+            item, created = create_article_version_from_latest(
+                code=code,
+                quote=quote,
+                revision=revision,
+                creation_token=creation_token,
+                expected_source_id=source_version_id,
+            )
+        except ArticleVersionConflict as exc:
+            form.add_error("code", str(exc))
+        else:
+            if not created:
+                messages.info(request, f"Articolo {item.code} già aggiunto; il doppio invio è stato ignorato.")
+            return redirect("quotes:items", pk=pk)
+
+    if not form.errors and latest_article_version(code, revision) is not None:
+        form.add_error("code", "Articolo già presente. Seleziona il risultato corrispondente e usa Carica articolo.")
+
+    if not form.errors:
+        with transaction.atomic():
+            locked_quote = Quote.objects.select_for_update().get(pk=quote.pk)
+            existing_for_token = (
+                QuoteItem.objects.filter(quote=locked_quote, creation_token=creation_token).first()
+                if creation_token else None
+            )
+            if existing_for_token:
+                item = existing_for_token
+                created = False
+            elif latest_article_version(code, revision) is not None:
+                item = None
+                created = False
+            else:
+                QuoteItem.objects.filter(quote=locked_quote).update(display_order=F("display_order") + 1)
+                item = QuoteItem.objects.create(
+                    quote=locked_quote,
+                    code=code,
+                    revision=revision,
+                    creation_token=creation_token,
+                    display_order=1,
+                )
+                initialize_item_phases(item)
+                created = True
+        if item is None:
+            form.add_error("code", "La coppia codice e revisione è stata creata nel frattempo. Selezionala dalla ricerca e riprova.")
+        elif created:
+            return redirect("quotes:items", pk=pk)
+        else:
+            messages.info(request, f"Articolo {item.code} già aggiunto; il doppio invio è stato ignorato.")
+            return redirect("quotes:items", pk=pk)
+
+    if form.errors:
+        messages.error(request, "Articolo non caricato: controllare codice e revisione.")
+        return render_items(
+            request, get_quote(request, pk), draft_load_form=form, status=422
         )
     return redirect("quotes:items", pk=pk)
 
@@ -223,8 +418,8 @@ def item_edit(request: HttpRequest, pk: int, item_id: int) -> HttpResponse:
     form = QuoteItemForm(request.POST or None, instance=item, prefix=prefix)
     if request.method == "POST" and form.is_valid():
         form.save()
-        messages.success(request, "Articolo aggiornato.")
-        return redirect("quotes:items", pk=pk)
+        messages.success(request, "Modifiche articolo salvate correttamente.")
+        return redirect(f"{reverse('quotes:items', args=[pk])}?open_item={item.pk}")
     if request.method == "POST":
         messages.error(request, "Articolo non aggiornato: controllare i campi indicati.")
         return render_items(request, quote, item_form=form, status=422)
@@ -244,7 +439,7 @@ def item_duplicate(request: HttpRequest, pk: int, item_id: int) -> HttpResponse:
         pk=item_id, quote_id=pk,
     )
     item = duplicate_item(source)
-    messages.success(request, f"Articolo duplicato come {item.code}; materiali, lavorazioni e snapshot sono stati copiati.")
+    messages.success(request, f"Articolo duplicato come {item.code}.")
     return redirect("quotes:items", pk=pk)
 
 
@@ -347,6 +542,7 @@ def build_phase_rows(quote: Quote):
 @permission_required("quotes.view_quote", raise_exception=True)
 def quote_work(request: HttpRequest, pk: int) -> HttpResponse:
     quote = get_quote(request, pk)
+    record_workflow_step(quote, 3)
     return render(request, "quotes/work.html", {"quote": quote, "item_rows": build_phase_rows(quote), "step": 3})
 
 
@@ -488,6 +684,8 @@ def treatment_delete(request: HttpRequest, pk: int, treatment_id: int) -> HttpRe
 @editable_quote_required
 def quote_summary(request: HttpRequest, pk: int) -> HttpResponse:
     quote = get_quote(request, pk)
+    if quote.items.exists():
+        record_workflow_step(quote, 4)
     form = QuoteSummaryForm(request.POST or None, instance=quote)
     if request.method == "POST" and form.is_valid():
         form.save()
@@ -537,10 +735,83 @@ def quote_duplicate(request: HttpRequest, pk: int) -> HttpResponse:
 @require_POST
 def quote_archive(request: HttpRequest, pk: int) -> HttpResponse:
     quote = get_quote(request, pk)
-    quote.status = Quote.Status.ARCHIVED
-    quote.save(update_fields=["status", "updated_at"])
+    archive_quotes(Quote.objects.filter(pk=quote.pk))
     messages.success(request, f"Preventivo {quote.number} archiviato. Nessun dato e stato cancellato.")
     return redirect("quotes:dashboard")
+
+
+@login_required
+@permission_required("quotes.archive_quote", raise_exception=True)
+@require_POST
+def quote_bulk_archive(request: HttpRequest) -> HttpResponse:
+    scope = request.POST.get("scope", "selected")
+    queryset = quote_queryset(request.user).exclude(status=Quote.Status.ARCHIVED)
+    if scope == "selected":
+        quote_ids = {
+            int(value)
+            for value in request.POST.getlist("quote_ids")
+            if value.isdigit()
+        }
+        if not quote_ids:
+            messages.warning(request, "Seleziona almeno un preventivo da archiviare.")
+            return redirect("quotes:dashboard")
+        queryset = queryset.filter(pk__in=quote_ids)
+    elif scope != "all":
+        messages.error(request, "Azione di archiviazione non valida.")
+        return redirect("quotes:dashboard")
+
+    archived_count = archive_quotes(queryset)
+    if archived_count == 1:
+        messages.success(request, "1 preventivo archiviato. Nessun dato è stato cancellato.")
+    elif archived_count:
+        messages.success(
+            request,
+            f"{archived_count} preventivi archiviati. Nessun dato è stato cancellato.",
+        )
+    else:
+        messages.warning(request, "Nessun preventivo selezionato può essere archiviato.")
+    return redirect("quotes:dashboard")
+
+
+@login_required
+@permission_required("quotes.archive_quote", raise_exception=True)
+@require_POST
+def quote_bulk_restore(request: HttpRequest) -> HttpResponse:
+    query_string = request.META.get("QUERY_STRING", "")
+    search_redirect = reverse("quotes:search")
+    if query_string:
+        search_redirect = f"{search_redirect}?{query_string}"
+    scope = request.POST.get("scope", "selected")
+    queryset = quote_queryset(request.user).filter(status=Quote.Status.ARCHIVED)
+    if scope == "selected":
+        quote_ids = {
+            int(value)
+            for value in request.POST.getlist("quote_ids")
+            if value.isdigit()
+        }
+        if not quote_ids:
+            messages.warning(request, "Seleziona almeno un preventivo da ripristinare.")
+            return redirect(search_redirect)
+        queryset = queryset.filter(pk__in=quote_ids)
+    elif scope == "all":
+        form = QuoteSearchForm(request.GET or None)
+        if form.is_valid():
+            queryset = apply_quote_filters(queryset, form.cleaned_data)
+    else:
+        messages.error(request, "Azione di ripristino non valida.")
+        return redirect(search_redirect)
+
+    restored_count = restore_quotes(queryset)
+    if restored_count == 1:
+        messages.success(request, "1 preventivo ripristinato nello stato precedente.")
+    elif restored_count:
+        messages.success(
+            request,
+            f"{restored_count} preventivi ripristinati nei rispettivi stati precedenti.",
+        )
+    else:
+        messages.warning(request, "Nessun preventivo selezionato può essere ripristinato.")
+    return redirect(search_redirect)
 
 
 @login_required
@@ -561,22 +832,20 @@ def quote_search(request: HttpRequest) -> HttpResponse:
     form = QuoteSearchForm(request.GET or None)
     queryset = quote_queryset(request.user)
     if form.is_valid():
-        data = form.cleaned_data
-        if data["q"]:
-            term = data["q"]
-            queryset = queryset.filter(Q(number__icontains=term) | Q(client__name__icontains=term) | Q(items__code__icontains=term) | Q(items__description__icontains=term)).distinct()
-        if data["status"]:
-            if data["status"] == Quote.Status.DRAFT:
-                queryset = queryset.exclude(status__in=[Quote.Status.COMPLETED, Quote.Status.REJECTED]).exclude(
-                    customer_decision__in=[Quote.CustomerDecision.ACCEPTED, Quote.CustomerDecision.REJECTED]
-                )
-            else:
-                queryset = queryset.filter(status=data["status"])
-        if data["feasibility"]:
-            queryset = queryset.filter(feasibility=data["feasibility"])
-        if data["date_from"]:
-            queryset = queryset.filter(date__gte=data["date_from"])
-        if data["date_to"]:
-            queryset = queryset.filter(date__lte=data["date_to"])
-    page = Paginator(queryset, 20).get_page(request.GET.get("page"))
-    return render(request, "quotes/search.html", {"form": form, "page": page})
+        queryset = apply_quote_filters(queryset, form.cleaned_data)
+    has_archived_results = queryset.filter(status=Quote.Status.ARCHIVED).exists()
+    queryset, sort, direction = sort_quotes(queryset, request, {
+        "number": "number", "client": "client__name", "date": "date",
+        "status": "status", "feasibility": "feasibility", "articles": "article_code",
+    })
+    page = Paginator(queryset, 50).get_page(request.GET.get("page"))
+    query_params = request.GET.copy()
+    query_params.pop("page", None)
+    return render(request, "quotes/search.html", {
+        "form": form,
+        "page": page,
+        "filter_query": query_params.urlencode(),
+        "has_archived_results": has_archived_results,
+        "sort": sort,
+        "direction": direction,
+    })

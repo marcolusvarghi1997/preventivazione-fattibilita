@@ -9,7 +9,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_POST
 
 from .models import LanDeviceAccess
-from .network import get_remote_ip, get_server_connection_info
+from .network import get_remote_ip, get_server_connection_info, normalize_mac
 
 
 @never_cache
@@ -31,6 +31,7 @@ def lan_settings(request):
         ),
         "pending_count": LanDeviceAccess.objects.filter(status=LanDeviceAccess.Status.PENDING).count(),
         "current_ip": get_remote_ip(request),
+        "current_mac": getattr(request, "lan_remote_mac", None),
         **connection_info,
     })
 
@@ -51,12 +52,19 @@ def decide_lan_access(request, pk):
         raise Http404
 
     device = get_object_or_404(LanDeviceAccess, pk=pk)
+    if status == LanDeviceAccess.Status.ALLOWED and normalize_mac(device.mac_address) is None:
+        messages.error(
+            request,
+            f"Il dispositivo {device.ip_address} non può essere autorizzato finché il MAC non viene rilevato.",
+        )
+        return redirect("catalog:lan_settings")
     device.status = status
     device.decided_at = timezone.now()
     device.decided_by = request.user
     device.save(update_fields=("status", "decided_at", "decided_by"))
     state = "autorizzato" if status == LanDeviceAccess.Status.ALLOWED else "bloccato"
-    messages.success(request, f"Il dispositivo {device.ip_address} è stato {state}.")
+    identity = f"{device.ip_address} / {device.mac_address}" if device.mac_address else str(device.ip_address)
+    messages.success(request, f"Il dispositivo {identity} è stato {state}.")
     return redirect("catalog:lan_settings")
 
 
@@ -70,7 +78,9 @@ def delete_lan_access(request, pk):
     device = get_object_or_404(LanDeviceAccess, pk=pk)
     ip_address = str(device.ip_address)
     if ip_address == get_remote_ip(request):
-        request.session["lan_suppress_detection_ip"] = ip_address
+        request.session["lan_suppress_detection_identity"] = (
+            f"{ip_address}|{device.mac_address}"
+        )
     device.delete()
     messages.success(request, f"La richiesta del dispositivo {ip_address} è stata rimossa.")
     return redirect("catalog:lan_settings")

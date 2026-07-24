@@ -96,6 +96,96 @@ async function main() {
   await waitForServer();
   browser = await chromium.launch({ headless: true, executablePath: browserPath });
 
+  await runTest("dashboard con selezione multipla solo per archiviazione", async (page) => {
+    await page.goto(`${baseURL}/`);
+    const rows = page.locator("tbody tr");
+    assert.ok(await rows.count() <= 20, "La dashboard non deve mostrare più di 20 preventivi.");
+    const checkboxes = page.locator("[data-quote-checkbox]");
+    assert.ok(await checkboxes.count() >= 2, "Servono più preventivi selezionabili per l'azione multipla.");
+    assert.equal(await checkboxes.first().isHidden(), true, "Le checkbox non devono comparire subito.");
+    await page.getByRole("button", { name: "Archivia multipli" }).click();
+    assert.equal(await checkboxes.first().isVisible(), true);
+    const selectAll = page.locator("[data-select-all-quotes]");
+    const archiveButton = page.getByRole("button", { name: "Archivia selezionati" });
+    assert.equal(await page.getByRole("button", { name: "Archivia tutti" }).isVisible(), true);
+    assert.equal(await archiveButton.isDisabled(), true);
+    await rows.first().click();
+    assert.equal(await checkboxes.first().isChecked(), true, "Il clic sulla riga deve selezionare il preventivo.");
+    const currentUrl = page.url();
+    await rows.first().locator(".row-arrow").click();
+    assert.equal(await checkboxes.first().isChecked(), false, "Anche il clic sulla freccia deve cambiare la selezione.");
+    assert.equal(page.url(), currentUrl, "In modalità multipla la riga non deve aprire il preventivo.");
+    await selectAll.check();
+    assert.equal(await checkboxes.evaluateAll((elements) => elements.every((element) => element.checked)), true);
+    assert.equal(await archiveButton.isEnabled(), true);
+    assert.match(await page.locator("[data-bulk-selection-status]").innerText(), /preventivi selezionati/);
+    await checkboxes.first().uncheck();
+    assert.equal(await selectAll.evaluate((element) => element.indeterminate), true);
+    assert.equal(await page.getByRole("button", { name: /Elimina selezionati/i }).count(), 0);
+    const dashboardCheckboxAlignment = await checkboxes.first().evaluate((element) => {
+      const checkbox = element.getBoundingClientRect();
+      const cell = element.closest("td").getBoundingClientRect();
+      return Math.abs((checkbox.top + checkbox.height / 2) - (cell.top + cell.height / 2));
+    });
+    assert.ok(dashboardCheckboxAlignment <= 1, "La checkbox dashboard deve essere centrata verticalmente.");
+    await page.getByRole("button", { name: "Archivia multipli" }).click();
+    assert.equal(await checkboxes.first().isHidden(), true);
+  });
+
+  await runTest("ricerca con ripristino multiplo in due passaggi", async (page) => {
+    await page.goto(`${baseURL}/preventivi/cerca/?status=archived`);
+    assert.ok(await page.locator("tbody tr").count() <= 50, "La ricerca non deve mostrare più di 50 risultati.");
+    const filterAlignment = await page.locator(".search-filter-grid").evaluate((element) => {
+      const controls = Array.from(element.querySelectorAll("input:not([type=hidden]), select, .search-filter-actions .button"));
+      const boxes = controls.map((control) => control.getBoundingClientRect());
+      return {
+        heights: boxes.map((box) => Math.round(box.height)),
+        centers: boxes.map((box) => Math.round((box.top + box.height / 2) * 10) / 10),
+        viewportWidth: window.innerWidth,
+        columns: getComputedStyle(element).gridTemplateColumns,
+      };
+    });
+    assert.equal(new Set(filterAlignment.heights).size, 1, `Altezze filtri non uniformi: ${filterAlignment.heights.join(", ")}`);
+    assert.ok(
+      Math.max(...filterAlignment.centers) - Math.min(...filterAlignment.centers) <= 1,
+      `Filtri non centrati verticalmente a ${filterAlignment.viewportWidth}px (${filterAlignment.columns}): ${filterAlignment.centers.join(", ")}`,
+    );
+    const archivedRow = page.locator("tbody tr").filter({ hasText: "ARCH-01" });
+    assert.match(await archivedRow.innerText(), /Archiviato/);
+    assert.doesNotMatch(await archivedRow.innerText(), /Bozza/);
+    const checkbox = archivedRow.locator("[data-quote-checkbox]");
+    assert.equal(await checkbox.isHidden(), true);
+    await page.getByRole("button", { name: "Ripristina multipli" }).click();
+    assert.equal(await checkbox.isVisible(), true);
+    assert.equal(await page.getByRole("button", { name: "Ripristina selezionati" }).isDisabled(), true);
+    assert.equal(await page.getByRole("button", { name: "Ripristina tutti" }).isVisible(), true);
+    await archivedRow.click();
+    assert.equal(await checkbox.isChecked(), true, "Il clic sulla riga deve selezionare il preventivo da ripristinare.");
+    await archivedRow.click();
+    assert.equal(await checkbox.isChecked(), false, "Un secondo clic sulla riga deve deselezionarlo.");
+    await checkbox.check();
+    assert.equal(await page.getByRole("button", { name: "Ripristina selezionati" }).isEnabled(), true);
+    const searchCheckboxAlignment = await checkbox.evaluate((element) => {
+      const checkboxBox = element.getBoundingClientRect();
+      const cell = element.closest("td").getBoundingClientRect();
+      return Math.abs((checkboxBox.top + checkboxBox.height / 2) - (cell.top + cell.height / 2));
+    });
+    assert.ok(searchCheckboxAlignment <= 1, "La checkbox ricerca deve essere centrata verticalmente.");
+    await page.getByRole("button", { name: "Ripristina multipli" }).click();
+    assert.equal(await checkbox.isHidden(), true);
+  });
+
+  await runAdminTest("gestione LAN richiede identita IP e MAC verificata", async (page) => {
+    await page.goto(`${baseURL}/admin/rete/`);
+    assert.match(await page.locator(".lan-control").innerText(), /sia l’IP sia il MAC/);
+    const verified = page.locator(".lan-access-table tbody tr").filter({ hasText: "192.168.1.201" });
+    assert.match(await verified.innerText(), /02:11:22:33:44:55/);
+    assert.equal(await verified.getByRole("button", { name: "Sì" }).isEnabled(), true);
+    const unverified = page.locator(".lan-access-table tbody tr").filter({ hasText: "192.168.1.202" });
+    assert.match(await unverified.innerText(), /Non rilevato/);
+    assert.equal(await unverified.getByRole("button", { name: "Sì" }).isDisabled(), true);
+  });
+
   await runTest("cliente selezionabile con click e referente filtrato", async (page) => {
     await page.goto(`${baseURL}/preventivi/nuovo/`);
     const search = page.getByRole("combobox", { name: "Cliente" });
@@ -116,9 +206,13 @@ async function main() {
     assert.notEqual(await page.locator("[data-client-id]").inputValue(), "");
     assert.equal(await page.locator("[data-contact-name]").inputValue(), fixtures.contact_name);
     assert.equal(await page.locator("[data-contact-email]").inputValue(), fixtures.contact_email);
-    assert.match(await page.locator("[data-contact-state]").innerText(), /Referente Unico/);
+    assert.equal(await page.locator("[data-contact-state]").isHidden(), true);
     assert.equal(await page.getByRole("option", { name: /Referente Unico/ }).count(), 1);
     assert.equal(await page.getByText("Inserimento libero").count(), 0);
+    await search.fill(fixtures.client_without_preferred);
+    await page.locator("[data-client-result]").filter({ hasText: fixtures.client_without_preferred }).click();
+    assert.equal(await page.locator("[data-contact-id]").inputValue(), "");
+    assert.equal(await page.locator("[data-contact-select]").inputValue(), "");
 
     const heights = await page.locator("#id_date, [data-client-search], [data-open-client-dialog], [data-contact-select], [data-open-contact-dialog]")
       .evaluateAll((elements) => elements.map((element) => Math.round(element.getBoundingClientRect().height)));
@@ -129,6 +223,20 @@ async function main() {
 
   await runTest("fattibilita segmentata, compatta e adattata alla pagina", async (page) => {
     await page.goto(`${baseURL}/preventivi/${fixtures.main_quote}/articoli/`);
+    const stepAlignment = await page.locator(".steps > a").first().evaluate((step) => {
+      const stepBox = step.getBoundingClientRect();
+      const children = Array.from(step.children).map((child) => child.getBoundingClientRect());
+      const contentTop = Math.min(...children.map((box) => box.top));
+      const contentBottom = Math.max(...children.map((box) => box.bottom));
+      return {
+        stepCenter: stepBox.top + stepBox.height / 2,
+        contentCenter: contentTop + (contentBottom - contentTop) / 2,
+      };
+    });
+    assert.ok(
+      Math.abs(stepAlignment.stepCenter - stepAlignment.contentCenter) <= 2,
+      "Le scritte della navigazione devono essere centrate verticalmente.",
+    );
     const selector = page.locator("details[data-article-card]").first().locator(".field-feasibility");
     const labels = selector.locator("label");
     assert.equal(await labels.count(), 3);
@@ -217,20 +325,28 @@ async function main() {
   await runTest("quantita non valida visibile dopo risposta HTMX 422", async (page) => {
     await page.goto(`${baseURL}/preventivi/${fixtures.main_quote}/articoli/`);
     await page.getByRole("button", { name: "Aggiungi articolo" }).click();
-    const form = page.locator('form[action$="/articoli/aggiungi/"]');
-    await form.locator('input[name="code"]').fill("PW-ERR");
-    await form.locator('input[name="quantity"]').fill("0");
-    await form.locator('select[name="material"]').selectOption({ index: 1 });
-    await form.locator('input[name="weight_kg"]').fill("1.500");
+    const loadForm = page.locator('form[action$="/articoli/aggiungi/"]');
+    await loadForm.locator('input[name="code"]').fill("PW-ERR");
+    await loadForm.locator('input[name="revision"]').fill("00");
+    await loadForm.getByRole("button", { name: "Carica articolo" }).click();
+    const article = page.locator("details[data-article-card]").filter({ hasText: "PW-ERR" });
+    await article.waitFor();
+    await article.evaluate((element) => { element.open = true; });
+    const form = article.locator("form.article-edit-form");
+    await form.locator('input[name$="-quantity"]').fill("0");
     await form.evaluate((element) => { element.noValidate = true; });
     const responsePromise = page.waitForResponse(
-      (response) => response.url().endsWith("/articoli/aggiungi/") && response.status() === 422,
+      (response) => response.url().endsWith("/modifica/") && response.status() === 422,
     );
-    await form.getByRole("button", { name: "Salva articolo" }).click();
+    await form.getByRole("button", { name: "Salva modifiche articolo" }).click();
     await responsePromise;
     await page.locator(".field.has-error").filter({ hasText: "Quantità" }).waitFor();
-    assert.match(await page.locator(".messages").innerText(), /Articolo non aggiunto/i);
-    assert.equal(await form.locator('input[name="quantity"]').getAttribute("min"), "1");
+    assert.match(await page.locator(".messages").innerText(), /Articolo non aggiornato/i);
+    assert.equal(await page.locator('.field.has-error input[name$="-quantity"]').getAttribute("min"), "1");
+    const invalidArticle = page.locator("details[data-article-card]").filter({ hasText: "PW-ERR" });
+    page.once("dialog", (dialog) => dialog.accept());
+    await invalidArticle.getByRole("button", { name: "Elimina articolo" }).click();
+    await page.getByText(/PW-ERR rimosso/i).waitFor();
   });
 
   await runTest("articolo completo, doppio clic, persistenza, duplicazione ed eliminazione", async (page) => {
@@ -240,19 +356,65 @@ async function main() {
     assert.equal(await page.locator("[data-new-article]").count(), 1, "Il doppio clic deve creare una sola bozza.");
 
     const form = page.locator("[data-new-article] form");
+    assert.equal(
+      await form.locator(".article-load-section").evaluate((element) => getComputedStyle(element).borderBottomWidth),
+      "0px",
+    );
+    assert.equal(
+      await form.locator(".article-save-bar").evaluate((element) => getComputedStyle(element).borderTopWidth),
+      "0px",
+    );
     await form.locator('input[name="code"]').fill("PW-COMPLETO");
-    await form.locator('input[name="quantity"]').fill("3");
-    await form.locator('[name="description"]').fill("Descrizione tecnica molto lunga per verificare il comportamento responsive senza troncamenti");
-    await form.locator('select[name="material"]').selectOption({ index: 1 });
-    await form.locator('input[name="weight_kg"]').fill("2.750");
-    await form.getByRole("button", { name: "Salva articolo" }).click();
-    await page.getByText(/PW-COMPLETO aggiunto/i).waitFor();
-    assert.equal(await page.getByText("PW-COMPLETO", { exact: true }).count(), 1);
+    await form.locator('input[name="revision"]').fill("00");
+    assert.equal(await form.locator('input[name="quantity"], [name="description"], select[name="material"]').count(), 0);
+    await form.getByRole("button", { name: "Carica articolo" }).click();
+    let article = page.locator("details[data-article-card]").filter({ hasText: "PW-COMPLETO" });
+    await article.waitFor();
+    const orderedCards = page.locator("details[data-article-card]");
+    const orderedCardCount = await orderedCards.count();
+    assert.equal(
+      (await orderedCards.first().locator(".article-index").innerText()).trim(),
+      String(orderedCardCount).padStart(2, "0"),
+      "L'articolo nuovo in testa deve mantenere il numero progressivo più alto.",
+    );
+    assert.equal(
+      (await orderedCards.last().locator(".article-index").innerText()).trim(),
+      "01",
+      "L'articolo più vecchio in fondo deve restare il numero 1.",
+    );
+    await article.evaluate((element) => { element.open = true; });
+    let editForm = article.locator("form.article-edit-form");
+    await article.locator("details.article-secondary").first().evaluate((element) => { element.open = true; });
+    await article.getByRole("button", { name: "Converti misure" }).click();
+    const converter = page.locator("[data-unit-converter-dialog]");
+    await converter.getByLabel("Valore").fill("2,5");
+    await converter.getByLabel("Unità di partenza").selectOption("cm");
+    assert.match(await converter.locator("[data-unit-converter-result]").innerText(), /25 mm/);
+    await converter.getByRole("button", { name: "Inserisci in millimetri" }).click();
+    assert.equal(await editForm.locator('input[name$="-length_mm"]').inputValue(), "25");
+    await editForm.locator('input[name$="-quantity"]').fill("3");
+    await editForm.locator('[name$="-description"]').fill("Descrizione tecnica molto lunga per verificare il comportamento responsive senza troncamenti");
+    await Promise.all([
+      page.waitForResponse((response) => response.url().endsWith("/modifica/")),
+      editForm.getByRole("button", { name: "Salva modifiche articolo" }).click(),
+    ]);
+    await page.waitForTimeout(100);
+    article = page.locator("details[data-article-card]").filter({ hasText: "PW-COMPLETO" });
+    await article.waitFor();
+    await article.evaluate((element) => { element.open = true; });
+    const addMaterial = article.locator("details.add-panel");
+    await addMaterial.evaluate((element) => { element.open = true; });
+    await addMaterial.locator('select[name$="-material"]').selectOption({ index: 1 });
+    await addMaterial.locator('input[name$="-weight_kg"]').fill("2.750");
+    await addMaterial.getByRole("button", { name: "Aggiungi materiale" }).click();
+    await page.locator("details[data-article-card]").filter({ hasText: "PW-COMPLETO" }).locator(".material-table tbody tr").waitFor({ state: "attached" });
+    assert.equal(await page.getByText("PW-COMPLETO", { exact: true }).count(), 2);
 
     await page.reload();
-    const article = page.locator("details[data-article-card]").filter({ hasText: "PW-COMPLETO" });
-    await article.locator(":scope > summary").click();
+    article = page.locator("details[data-article-card]").filter({ hasText: "PW-COMPLETO" });
+    if ((await article.getAttribute("open")) === null) await article.locator(":scope > summary").click();
     assert.equal(await article.locator('input[name$="-quantity"]').inputValue(), "3");
+    assert.equal(await article.locator('input[name$="-length_mm"]').inputValue(), "25,000");
     assert.equal(await article.locator(".material-value-control--suffix input").inputValue(), "2,750");
     assert.equal(await article.locator(".material-value-control--suffix span").innerText(), "kg");
     const materialAlignment = await article.locator(".material-table tbody tr").first().evaluate((row) => {
@@ -267,18 +429,66 @@ async function main() {
 
     page.once("dialog", (dialog) => dialog.accept());
     await article.getByRole("button", { name: "Duplica" }).click();
-    await page.getByText("PW-COMPLETO-COPIA", { exact: true }).waitFor();
     const copy = page.locator("details[data-article-card]").filter({ hasText: "PW-COMPLETO-COPIA" });
-    await copy.locator(":scope > summary").click();
+    await copy.waitFor();
+    if ((await copy.getAttribute("open")) === null) await copy.locator(":scope > summary").click();
     page.once("dialog", (dialog) => dialog.accept());
     await copy.getByRole("button", { name: "Elimina articolo" }).click();
     await page.getByText(/PW-COMPLETO-COPIA rimosso/i).waitFor();
     assert.equal(await page.getByText("PW-COMPLETO-COPIA", { exact: true }).count(), 0);
 
-    await article.locator(":scope > summary").click();
+    if ((await article.getAttribute("open")) === null) await article.locator(":scope > summary").click();
     page.once("dialog", (dialog) => dialog.accept());
     await article.getByRole("button", { name: "Elimina articolo" }).click();
     await page.getByText(/PW-COMPLETO rimosso/i).waitFor();
+  });
+
+  await runTest("ricerca e caricamento dell'ultima versione articolo", async (page) => {
+    await page.goto(`${baseURL}/preventivi/${fixtures.version_quote}/articoli/`);
+    await page.getByRole("button", { name: "Aggiungi articolo" }).click();
+    const form = page.locator("[data-new-article] form");
+    await form.locator('input[name="code"]').focus();
+    assert.equal(await form.locator("[data-article-result]").count(), 0);
+    assert.equal(await form.locator("[data-article-results]").isHidden(), true);
+    await form.locator('input[name="code"]').fill("PW-01");
+    const result = form.locator("[data-article-result]").filter({ hasText: "PW-01 · Rev. 00" });
+    await result.waitFor();
+    const autocompleteLayout = await form.evaluate((element) => {
+      const input = element.querySelector("[data-article-code]").getBoundingClientRect();
+      const results = element.querySelector("[data-article-results]").getBoundingClientRect();
+      const card = element.closest(".draft-card");
+      return {
+        inputLeft: Math.round(input.left),
+        inputRight: Math.round(input.right),
+        resultsLeft: Math.round(results.left),
+        resultsRight: Math.round(results.right),
+        cardOverflow: getComputedStyle(card).overflow,
+      };
+    });
+    assert.equal(autocompleteLayout.resultsLeft, autocompleteLayout.inputLeft);
+    assert.equal(autocompleteLayout.resultsRight, autocompleteLayout.inputRight);
+    assert.equal(autocompleteLayout.cardOverflow, "visible");
+    assert.doesNotMatch(await result.innerText(), /Versione/i);
+    assert.match(await result.innerText(), /\d{2}\/\d{2}\/\d{4}$/);
+    await result.click();
+    assert.equal(await form.locator("[data-article-version-status]").count(), 0);
+    assert.notEqual(await form.locator('input[name="source_version_id"]').inputValue(), "");
+    assert.equal(await form.locator('input[name="revision"]').inputValue(), "00");
+    assert.equal(await form.locator('input[name="quantity"], [name="description"], select[name="material"]').count(), 0);
+    const invalidFields = await form.evaluate((element) => Array.from(element.elements)
+      .filter((field) => typeof field.checkValidity === "function" && !field.checkValidity())
+      .map((field) => ({ name: field.name, value: field.value, message: field.validationMessage })));
+    assert.deepEqual(invalidFields, [], `Campi non validi dopo la selezione: ${JSON.stringify(invalidFields)}`);
+    await form.getByRole("button", { name: "Carica articolo" }).click();
+    const article = page.locator("details[data-article-card]").filter({ hasText: "PW-01" });
+    await article.waitFor();
+    assert.match(await page.locator("details[data-article-card]").first().locator(":scope > summary").innerText(), /PW-01/);
+    assert.match(await article.locator(":scope > summary").innerText(), /Rev\. 00/);
+    assert.doesNotMatch(await article.locator(":scope > summary").innerText(), /versione/i);
+    await page.getByRole("link", { name: "Continua", exact: true }).click();
+    await page.locator(".item-banner").filter({ hasText: "PW-01" }).waitFor();
+    assert.match(await page.locator(".item-banner").innerText(), /PW-01[\s\S]*Rev\. 00/);
+    assert.doesNotMatch(await page.locator(".item-banner").innerText(), /versione/i);
   });
 
   await runTest("operatori zero produce un messaggio comprensibile", async (page) => {
@@ -394,10 +604,21 @@ async function main() {
     await cost.fill("46,20");
     await cost.press("Tab");
     assert.equal(await cost.inputValue(), "46,20");
-    await article.getByRole("button", { name: "Salva modifiche articolo" }).click();
-    await page.getByText(/Articolo aggiornato/i).waitFor();
+    const saveArticle = article.getByRole("button", { name: "Salva modifiche articolo" });
+    await saveArticle.scrollIntoViewIfNeeded();
+    const scrollBeforeSave = await page.evaluate(() => window.scrollY);
+    await saveArticle.click();
+    const savedMessage = page.locator(".message.success").filter({ hasText: "Modifiche articolo salvate correttamente." });
+    await savedMessage.waitFor();
+    await page.waitForTimeout(100);
+    const scrollAfterSave = await page.evaluate(() => window.scrollY);
+    assert.ok(
+      Math.abs(scrollAfterSave - scrollBeforeSave) <= 3,
+      `La pagina si è spostata dopo il salvataggio: ${scrollBeforeSave} -> ${scrollAfterSave}`,
+    );
+    assert.notEqual(await savedMessage.evaluate((element) => getComputedStyle(element).backgroundColor), "rgba(0, 0, 0, 0)");
     const updatedArticle = page.locator("details[data-article-card]").first();
-    if ((await updatedArticle.getAttribute("open")) === null) await updatedArticle.locator(":scope > summary").click();
+    assert.notEqual(await updatedArticle.getAttribute("open"), null, "L'articolo salvato deve restare aperto.");
     await updatedArticle.locator("details.article-extras > summary").click();
     assert.equal(await updatedArticle.locator("[data-extra-toggle]").first().isChecked(), true);
     assert.equal(await updatedArticle.locator("[data-extra-cost]").first().inputValue(), "46,20");
@@ -476,6 +697,10 @@ async function main() {
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
     assert.ok(overflow <= 1, `Overflow admin: ${overflow}px`);
     if (visualAuditDir) await page.screenshot({ path: path.join(visualAuditDir, "admin-lista-preventivi.png"), fullPage: true });
+    await page.goto(`${baseURL}/admin/quotes/quoteitem/`);
+    await page.locator("#result_list").waitFor();
+    assert.match(await page.locator("body").innerText(), /Storico articoli/i);
+    assert.match(await page.locator("#result_list thead").innerText(), /CODICE[\s\S]*REVISIONE[\s\S]*DATA ARTICOLO[\s\S]*VERSIONE SORGENTE/i);
     await page.goto(`${baseURL}/admin/catalog/material/add/`);
     await page.getByLabel("Nome").fill("Materiale Admin Browser");
     await page.getByLabel("Costo corrente al kg").fill("2,50");
