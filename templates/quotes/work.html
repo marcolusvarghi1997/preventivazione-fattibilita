@@ -2,47 +2,46 @@
 {% load quote_format %}
 {% block content %}
 {% include "quotes/_steps.html" %}
+<div class="work-workspace">
 <div class="page-heading section-heading"><div><span class="eyebrow">Preventivo {{ quote.number }}</span><h1>3. Lavorazioni</h1><p>Attiva solo le fasi necessarie e completa i dati della lavorazione.</p></div></div>
 {% if quote.status == "archived" %}<div class="alert warning"><strong>Preventivo archiviato:</strong> le lavorazioni sono disponibili in sola lettura. Duplica il preventivo dal riepilogo per modificarle.</div>{% endif %}
 {% for item_row in item_rows %}
 <section class="item-work">
-  <div class="item-banner"><div><span class="eyebrow">Articolo</span><h2>{{ item_row.item.code }}</h2><p>{{ item_row.item.description|default:"Nessuna descrizione" }} · Quantità {{ item_row.item.quantity }}</p></div><button class="button ghost light small" type="button" data-phase-filter aria-pressed="false">Mostra solo attive</button></div>
-  <div class="phase-grid">
-  {% for row in item_row.phases %}
-  <details class="phase-card {% if row.phase.active %}active{% else %}inactive{% endif %}" id="fase-{{ row.phase.pk }}" {% if row.phase.active %}open{% endif %}>
-    <summary class="phase-heading">
-      <div>{% if quote.status != "archived" %}<span class="phase-toggle">{{ row.phase_form.active }}</span>{% else %}<span class="phase-indicator" aria-hidden="true">{% if row.phase.active %}✓{% endif %}</span>{% endif %}<span><span class="phase-number">{{ row.config.order|stringformat:"02d" }}</span><h3>{{ row.config.name }}</h3></span></div>
-      <span class="phase-meta"><span class="phase-state">{% if row.phase.active %}Attiva{% else %}Non attiva{% endif %}</span><strong class="phase-cost">{% if row.phase.active %}{{ row.phase.total_cost|money }}{% else %}&nbsp;{% endif %}</strong></span>
-    </summary>
-    <div class="phase-body">
-    {% if row.phase.active %}
-    <div class="phase-details">
-      {% if row.config.mode == "time" %}
-        {% if row.phase.operations.all %}<div class="table-wrap"><table><thead><tr><th>Risorsa</th><th>Lavorazione</th><th>Attrezzaggio</th><th>Operatori</th><th>Riferimento</th><th>Note</th><th>Costo</th><th></th></tr></thead><tbody>
-        {% for operation in row.phase.operations.all %}<tr><td>{{ operation.resource_name_snapshot }}</td><td>{{ operation.working_minutes|decimal_it:2 }} min</td><td>{{ operation.setup_minutes|decimal_it:2 }} min</td><td>{{ operation.operators_snapshot }}</td><td>{{ operation.get_time_basis_display }}</td><td>{{ operation.notes|default:"—" }}</td><td>{{ operation.total_cost|money }}{% if operation.hourly_cost_snapshot == 0 %}<br><span class="warning-text">Costo orario da configurare</span>{% endif %}</td><td>{% if quote.status != "archived" %}<form method="post" action="{% url 'quotes:operation_delete' quote.pk operation.pk %}" data-confirm="Rimuovere l'operazione {{ operation.resource_name_snapshot }} dalla fase {{ row.config.name }}?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form>{% endif %}</td></tr>{% endfor %}
-        </tbody></table></div>{% endif %}
-        {% if quote.status != "archived" %}
-        {% if row.config.multiple_rows or not row.phase.operations.exists %}
-        <details class="add-panel"><summary>Aggiungi {% if row.phase.operations.exists %}un'altra operazione{% else %}i tempi di lavorazione{% endif %}</summary>
-          <form method="post" action="{% url 'quotes:operation_add' quote.pk row.phase.pk %}" class="form-grid compact" data-time-operation-form hx-post="{% url 'quotes:operation_add' quote.pk row.phase.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}{% include "quotes/_form_fields.html" with form=row.operation_form %}<div class="form-actions full"><button class="button primary" type="submit">Aggiungi operazione</button></div></form>
-        </details>{% endif %}
-        {% endif %}
-      {% elif row.config.mode == "direct" or row.config.mode == "purchase" %}
-        {% if row.phase.direct_costs.all %}<div class="table-wrap"><table><thead><tr><th>{% if row.config.mode == "purchase" %}Acquisto{% else %}Lavorazione extra interna{% endif %}</th>{% if row.config.mode == "purchase" %}<th>Fornitore</th>{% endif %}<th>Importo</th><th>Note</th><th></th></tr></thead><tbody>{% for cost in row.phase.direct_costs.all %}<tr><td>{{ cost.description }}</td>{% if row.config.mode == "purchase" %}<td>{{ cost.supplier|default:"—" }}</td>{% endif %}<td>{{ cost.amount|money }}</td><td>{{ cost.notes|default:"—" }}</td><td>{% if quote.status != "archived" %}<form method="post" action="{% url 'quotes:direct_cost_delete' quote.pk cost.pk %}" data-confirm="Rimuovere il costo {{ cost.description }} dalla fase {{ row.config.name }}?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
-        {% if row.config.mode == "purchase" and not row.phase.direct_costs.exists %}<div class="alert warning">Inserisci il costo dell'acquisto esterno prima di completare il preventivo.</div>{% endif %}
-        {% if quote.status != "archived" %}<details class="add-panel"><summary>Aggiungi {% if row.config.mode == "purchase" %}un acquisto esterno{% else %}una lavorazione extra interna{% endif %}</summary><form method="post" action="{% url 'quotes:direct_cost_add' quote.pk row.phase.pk %}" class="form-grid compact" hx-post="{% url 'quotes:direct_cost_add' quote.pk row.phase.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}{% include "quotes/_form_fields.html" with form=row.direct_form %}<div class="form-actions full"><button class="button primary" type="submit">Aggiungi costo</button></div></form></details>{% endif %}
-      {% elif row.config.mode == "treatment" %}
-        {% if row.phase.treatments.all %}<div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Descrizione</th><th>Fornitore</th><th>Costo</th><th></th></tr></thead><tbody>{% for treatment in row.phase.treatments.all %}<tr><td>{{ treatment.get_treatment_type_display }}</td><td>{{ treatment.description|default:"—" }}</td><td>{{ treatment.supplier|default:"—" }}</td><td>{{ treatment.cost|money }}</td><td>{% if quote.status != "archived" %}<form method="post" action="{% url 'quotes:treatment_delete' quote.pk treatment.pk %}" data-confirm="Rimuovere il trattamento {{ treatment.get_treatment_type_display }} dalla fase {{ row.config.name }}?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>{% endif %}
-        {% if quote.status != "archived" %}<details class="add-panel"><summary>Aggiungi trattamento esterno</summary><form method="post" action="{% url 'quotes:treatment_add' quote.pk row.phase.pk %}" class="form-grid compact" hx-post="{% url 'quotes:treatment_add' quote.pk row.phase.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}{% include "quotes/_form_fields.html" with form=row.treatment_form %}<div class="form-actions full"><button class="button primary" type="submit">Aggiungi trattamento</button></div></form></details>{% endif %}
-      {% endif %}
-    </div>
-    {% endif %}
-    </div>
-  </details>
-  {% if quote.status != "archived" %}<form id="phase-toggle-form-{{ row.phase.pk }}" method="post" action="{% url 'quotes:phase_update' quote.pk row.phase.pk %}" class="phase-toggle-form" hx-post="{% url 'quotes:phase_update' quote.pk row.phase.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}</form>{% endif %}
-  {% endfor %}
+  <div class="item-banner">
+    <div><span class="eyebrow">Articolo</span><h2>{{ item_row.item.code }}</h2><p>{{ item_row.item.description|default:"Nessuna descrizione" }} · Quantità {{ item_row.item.quantity }}</p></div>
+    <button class="button ghost light small" type="button" data-phase-filter aria-pressed="false">Mostra solo attive</button>
+  </div>
+
+  <div class="work-sections">
+    <section class="work-section" aria-labelledby="production-title-{{ item_row.item.pk }}">
+      <div class="work-section-heading">
+        <div><span class="eyebrow">Percorso produttivo</span><h3 id="production-title-{{ item_row.item.pk }}">Fasi di produzione</h3></div>
+        <p>Attiva le lavorazioni svolte sul pezzo. Quando una fase è attiva, i dati indicati come necessari devono essere completati.</p>
+      </div>
+      <div class="phase-grid phase-grid--production">
+        {% for row in item_row.production_phases %}
+          {% include "quotes/_phase_card.html" with row=row quote=quote %}
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="work-section work-section--optional" aria-labelledby="additional-title-{{ item_row.item.pk }}">
+      <div class="work-section-heading">
+        <div><span class="eyebrow">Solo se servono</span><h3 id="additional-title-{{ item_row.item.pk }}">Lavorazioni e costi aggiuntivi</h3></div>
+        <p>Queste voci sono facoltative: attivale soltanto quando fanno parte del preventivo.</p>
+      </div>
+      <div class="phase-grid phase-grid--additional">
+        {% for row in item_row.additional_phases %}
+          {% include "quotes/_phase_card.html" with row=row quote=quote %}
+        {% endfor %}
+      </div>
+    </section>
   </div>
 </section>
 {% empty %}<div class="alert error">Prima di configurare le lavorazioni devi inserire almeno un articolo.</div>{% endfor %}
-<div class="form-actions sticky-actions wizard-actions"><a class="button secondary" href="{% url 'quotes:items' quote.pk %}">Indietro</a><a class="button primary" href="{% url 'quotes:summary' quote.pk %}">Vai al riepilogo</a></div>
+<div class="form-actions sticky-actions wizard-actions">
+  <a class="button secondary" href="{% url 'quotes:items' quote.pk %}">Indietro</a>
+  <a class="button primary" href="{% url 'quotes:summary' quote.pk %}">{% if quote.status == "archived" %}Vai al riepilogo{% else %}Salva e vai al riepilogo{% endif %}</a>
+</div>
+</div>
 {% endblock %}

@@ -153,6 +153,32 @@ class RequestedEconomicRuleTests(TestCase):
         self.assertEqual(list(QuoteItemForm().fields["feasibility"].choices), expected)
         self.assertEqual(list(QuoteSummaryForm().fields["feasibility"].choices), expected)
 
+    def test_material_editor_shows_units_without_repeating_current_values(self):
+        response = self.client.get(reverse("quotes:items", args=[self.quote.pk]))
+        self.assertContains(response, "material-value-control")
+        self.assertContains(response, "Peso per pezzo")
+        self.assertContains(response, "Costo al kg")
+        self.assertNotContains(response, 'class="current-value"', html=False)
+
+    def test_work_page_separates_production_optional_and_required_fields(self):
+        definition = PhaseDefinition.objects.get(code="taglio-lamiera")
+        ItemPhase.objects.create(item=self.item, definition=definition, active=True, display_order=1)
+        response = self.client.get(reverse("quotes:work", args=[self.quote.pk]))
+        self.assertContains(response, "Fasi di produzione")
+        self.assertContains(response, "Lavorazioni e costi aggiuntivi")
+        self.assertContains(response, "Dati necessari")
+        self.assertContains(response, "Dettagli facoltativi")
+        self.assertContains(response, "Salva e vai al riepilogo")
+        self.assertContains(response, "phase-grid--production")
+        self.assertContains(response, "phase-grid--additional")
+
+    def test_external_purchase_form_marks_the_economic_cost_as_required(self):
+        definition = PhaseDefinition.objects.get(code="acquisti-esterni")
+        phase = ItemPhase.objects.create(item=self.item, definition=definition, display_order=10)
+        form = DirectCostForm(phase=phase)
+        self.assertTrue(form.fields["amount"].required)
+        self.assertEqual(form.fields["amount"].label, "Costo acquisto")
+
     def test_disabled_supplementary_cost_is_preserved_but_not_calculated(self):
         form = QuoteItemForm(data={
             "code": self.item.code,

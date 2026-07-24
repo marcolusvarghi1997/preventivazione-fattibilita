@@ -318,6 +318,7 @@ def build_phase_rows(quote: Quote):
     for item in quote.items.all():
         if item.phases.count() < len(phase_registry):
             initialize_item_phases(item)
+            item._prefetched_objects_cache.pop("phases", None)
         phases = []
         for phase in item.phases.all():
             config = phase_registry[phase.definition.code]
@@ -333,7 +334,12 @@ def build_phase_rows(quote: Quote):
                 "operation_form": operation_form, "direct_form": DirectCostForm(prefix=f"cost-{phase.pk}", phase=phase),
                 "treatment_form": TreatmentForm(prefix=f"treat-{phase.pk}"),
             })
-        rows.append({"item": item, "phases": phases})
+        rows.append({
+            "item": item,
+            "phases": phases,
+            "production_phases": [row for row in phases if row["config"].mode == "time"],
+            "additional_phases": [row for row in phases if row["config"].mode != "time"],
+        })
     return rows
 
 
@@ -353,11 +359,18 @@ def phase_update(request: HttpRequest, pk: int, phase_id: int) -> HttpResponse:
     phase = get_object_or_404(ItemPhase, pk=phase_id, item__quote_id=pk)
     form = PhaseForm(request.POST, instance=phase, prefix=f"phase-{phase.pk}")
     if form.is_valid():
-        phase = form.save()
-        if phase.definition.code == "acquisti-esterni" and phase.active:
-            phase.internal_answer = ItemPhase.InternalAnswer.NO
-            phase.save(update_fields=["internal_answer"])
-        messages.success(request, f"Fase {phase.definition.name} aggiornata automaticamente.")
+        with transaction.atomic():
+            phase = form.save()
+            if phase.active and phase.definition.code == "acquisti-esterni":
+                phase.internal_answer = ItemPhase.InternalAnswer.NO
+                phase.save(update_fields=["internal_answer"])
+            elif not phase.active:
+                phase.operations.all().delete()
+                phase.direct_costs.all().delete()
+                phase.treatments.all().delete()
+                phase.notes = ""
+                phase.internal_answer = ItemPhase.InternalAnswer.TO_CHECK
+                phase.save(update_fields=["notes", "internal_answer"])
     else:
         messages.error(request, "Fase non salvata: controllare i dati.")
     return redirect("quotes:work", pk=pk)

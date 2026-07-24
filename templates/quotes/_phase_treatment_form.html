@@ -1,0 +1,21 @@
+<form method="post" action="{% url 'quotes:treatment_add' quote.pk phase.pk %}" class="phase-entry-form" hx-post="{% url 'quotes:treatment_add' quote.pk phase.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">
+  {% csrf_token %}
+  {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+  {% if form.non_field_errors %}<div class="field-error full" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+  <section class="phase-form-section phase-form-section--required">
+    <div class="phase-form-heading"><strong>Dati necessari</strong><small>La descrizione serve soltanto per il tipo “Altro”.</small></div>
+    <div class="phase-required-grid phase-required-grid--treatment">
+      {% include "quotes/_field.html" with field=form.treatment_type %}
+      {% include "quotes/_field.html" with field=form.description %}
+      {% include "quotes/_field.html" with field=form.cost %}
+    </div>
+  </section>
+  <details class="phase-form-section phase-form-section--optional" {% if form.supplier.errors or form.notes.errors %}open{% endif %}>
+    <summary><span><strong>Dettagli facoltativi</strong><small>Fornitore e note</small></span></summary>
+    <div class="phase-optional-grid">
+      {% include "quotes/_field.html" with field=form.supplier %}
+      {% include "quotes/_field.html" with field=form.notes %}
+    </div>
+  </details>
+  <div class="form-actions phase-entry-actions"><button class="button primary" type="submit">Aggiungi trattamento</button></div>
+</form>

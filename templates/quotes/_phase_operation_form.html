@@ -1,0 +1,20 @@
+<form method="post" action="{% url 'quotes:operation_add' quote.pk phase.pk %}" class="phase-entry-form" data-time-operation-form hx-post="{% url 'quotes:operation_add' quote.pk phase.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">
+  {% csrf_token %}
+  {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+  {% if form.non_field_errors %}<div class="field-error full" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+  <section class="phase-form-section phase-form-section--required">
+    <div class="phase-form-heading"><strong>Dati necessari</strong><small>Inserisci almeno un tempo maggiore di zero.</small></div>
+    <div class="phase-required-grid">
+      {% if not form.resource.is_hidden %}{% include "quotes/_field.html" with field=form.resource %}{% endif %}
+      {% include "quotes/_field.html" with field=form.working_minutes %}
+      {% include "quotes/_field.html" with field=form.setup_minutes %}
+      {% include "quotes/_field.html" with field=form.operators_snapshot %}
+      {% include "quotes/_field.html" with field=form.time_basis %}
+    </div>
+  </section>
+  <details class="phase-form-section phase-form-section--optional" {% if form.notes.errors %}open{% endif %}>
+    <summary><span><strong>Dettagli facoltativi</strong><small>Note operative per questa lavorazione</small></span></summary>
+    <div class="phase-optional-grid">{% include "quotes/_field.html" with field=form.notes %}</div>
+  </details>
+  <div class="form-actions phase-entry-actions"><button class="button primary" type="submit">Aggiungi operazione</button></div>
+</form>

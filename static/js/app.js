@@ -240,12 +240,23 @@ document.addEventListener("pointerdown", (event) => {
 });
 
 document.addEventListener("toggle", (event) => {
-  if (event.target instanceof HTMLDetailsElement) syncDisclosure(event.target);
+  if (!(event.target instanceof HTMLDetailsElement)) return;
+  if (event.target.matches(".phase-card.inactive") && event.target.open) {
+    event.target.open = false;
+    return;
+  }
+  syncDisclosure(event.target);
 }, true);
 
 document.addEventListener("click", (event) => {
   if (event.target.matches("[data-phase-toggle]")) {
     event.stopPropagation();
+    return;
+  }
+
+  const phaseHeading = event.target.closest(".phase-heading");
+  if (phaseHeading?.parentElement.classList.contains("inactive")) {
+    event.preventDefault();
     return;
   }
 

@@ -325,9 +325,14 @@ class DirectCostForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["amount"].required = False
         self.fields["amount"].label = "Importo opzionale"
-        if phase and phase.definition.code == "lavorazioni-extra":
-            self.fields.pop("supplier")
-            self.fields["description"].label = "Lavorazione interna extra"
+        if phase:
+            if phase.definition.code == "lavorazioni-extra":
+                self.fields.pop("supplier")
+                self.fields["description"].label = "Lavorazione interna extra"
+            elif phase.definition.code == "acquisti-esterni":
+                self.fields["description"].label = "Acquisto"
+                self.fields["amount"].required = True
+                self.fields["amount"].label = "Costo acquisto"
 
     def clean_amount(self):
         return self.cleaned_data.get("amount") or Decimal("0")
@@ -343,6 +348,10 @@ class TreatmentForm(forms.ModelForm):
         model = ExternalTreatment
         fields = ("treatment_type", "description", "supplier", "cost", "notes")
         widgets = {"notes": forms.Textarea(attrs={"rows": 2})}
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["description"].help_text = "Obbligatoria solo quando scegli “Altro”."
 
     def clean(self):
         cleaned = super().clean()

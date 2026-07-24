@@ -1,0 +1,77 @@
+{% load quote_format %}
+<details class="phase-card {% if row.phase.active %}active{% else %}inactive{% endif %}" id="fase-{{ row.phase.pk }}" {% if row.phase.active %}open{% endif %}>
+  <summary class="phase-heading">
+    <div>
+      {% if quote.status != "archived" %}
+        <span class="phase-toggle">{{ row.phase_form.active }}</span>
+      {% else %}
+        <span class="phase-indicator" aria-hidden="true">{% if row.phase.active %}✓{% endif %}</span>
+      {% endif %}
+      <span><span class="phase-number">{{ row.config.order|stringformat:"02d" }}</span><h3>{{ row.config.name }}</h3></span>
+    </div>
+    <span class="phase-meta">
+      <span class="phase-state">{% if row.phase.active %}Attiva{% else %}Non attiva{% endif %}</span>
+      <strong class="phase-cost">{% if row.phase.active %}{{ row.phase.total_cost|money }}{% else %}&nbsp;{% endif %}</strong>
+    </span>
+  </summary>
+
+  <div class="phase-body">
+    {% if row.phase.active %}
+    <div class="phase-details">
+      {% if row.config.mode == "time" %}
+        <div class="phase-content-heading">
+          <div><span class="eyebrow">Dati della fase</span><h4>Tempi e risorse</h4></div>
+          <p>I campi con * sono necessari. Le note restano facoltative.</p>
+        </div>
+
+        {% if row.phase.operations.all %}
+        <div class="table-wrap phase-records"><table><thead><tr><th>Risorsa</th><th>Lavorazione</th><th>Attrezzaggio</th><th>Operatori</th><th>Riferimento</th><th>Note</th><th>Costo</th><th></th></tr></thead><tbody>
+          {% for operation in row.phase.operations.all %}<tr><td>{{ operation.resource_name_snapshot }}</td><td>{{ operation.working_minutes|decimal_it:2 }} min</td><td>{{ operation.setup_minutes|decimal_it:2 }} min</td><td>{{ operation.operators_snapshot }}</td><td>{{ operation.get_time_basis_display }}</td><td>{{ operation.notes|default:"—" }}</td><td>{{ operation.total_cost|money }}{% if operation.hourly_cost_snapshot == 0 %}<br><span class="warning-text">Costo orario da configurare</span>{% endif %}</td><td>{% if quote.status != "archived" %}<form method="post" action="{% url 'quotes:operation_delete' quote.pk operation.pk %}" data-confirm="Rimuovere l'operazione {{ operation.resource_name_snapshot }} dalla fase {{ row.config.name }}?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form>{% endif %}</td></tr>{% endfor %}
+        </tbody></table></div>
+        {% endif %}
+
+        {% if quote.status != "archived" and row.config.multiple_rows or quote.status != "archived" and not row.phase.operations.exists %}
+          {% if row.phase.operations.exists %}<details class="add-panel phase-add-panel"><summary>Aggiungi un’altra operazione</summary>{% endif %}
+          {% include "quotes/_phase_operation_form.html" with form=row.operation_form phase=row.phase quote=quote %}
+          {% if row.phase.operations.exists %}</details>{% endif %}
+        {% endif %}
+
+      {% elif row.config.mode == "direct" or row.config.mode == "purchase" %}
+        <div class="phase-content-heading">
+          <div><span class="eyebrow">{% if row.config.mode == "purchase" %}Costo esterno{% else %}Voce aggiuntiva{% endif %}</span><h4>{% if row.config.mode == "purchase" %}Acquisti affidati a fornitori{% else %}Lavorazioni interne extra{% endif %}</h4></div>
+          <p>{% if row.config.mode == "purchase" %}Acquisto e costo sono necessari; fornitore e note sono facoltativi.{% else %}Descrivi la lavorazione. Importo e note sono facoltativi.{% endif %}</p>
+        </div>
+
+        {% if row.phase.direct_costs.all %}
+        <div class="table-wrap phase-records"><table><thead><tr><th>{% if row.config.mode == "purchase" %}Acquisto{% else %}Lavorazione extra interna{% endif %}</th>{% if row.config.mode == "purchase" %}<th>Fornitore</th>{% endif %}<th>Importo</th><th>Note</th><th></th></tr></thead><tbody>{% for cost in row.phase.direct_costs.all %}<tr><td>{{ cost.description }}</td>{% if row.config.mode == "purchase" %}<td>{{ cost.supplier|default:"—" }}</td>{% endif %}<td>{{ cost.amount|money }}</td><td>{{ cost.notes|default:"—" }}</td><td>{% if quote.status != "archived" %}<form method="post" action="{% url 'quotes:direct_cost_delete' quote.pk cost.pk %}" data-confirm="Rimuovere il costo {{ cost.description }} dalla fase {{ row.config.name }}?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+        {% elif row.config.mode == "purchase" %}
+        <div class="phase-required-notice"><strong>Dati necessari mancanti.</strong> Inserisci almeno un acquisto con un costo.</div>
+        {% endif %}
+
+        {% if quote.status != "archived" %}
+          {% if row.phase.direct_costs.exists %}<details class="add-panel phase-add-panel"><summary>Aggiungi {% if row.config.mode == "purchase" %}un altro acquisto{% else %}un’altra lavorazione{% endif %}</summary>{% endif %}
+          {% include "quotes/_phase_direct_form.html" with form=row.direct_form phase=row.phase quote=quote mode=row.config.mode %}
+          {% if row.phase.direct_costs.exists %}</details>{% endif %}
+        {% endif %}
+
+      {% elif row.config.mode == "treatment" %}
+        <div class="phase-content-heading">
+          <div><span class="eyebrow">Trattamento esterno</span><h4>Tipo e costo del trattamento</h4></div>
+          <p>Tipo e costo sono necessari. Fornitore e note sono facoltativi.</p>
+        </div>
+
+        {% if row.phase.treatments.all %}
+        <div class="table-wrap phase-records"><table><thead><tr><th>Tipo</th><th>Descrizione</th><th>Fornitore</th><th>Costo</th><th></th></tr></thead><tbody>{% for treatment in row.phase.treatments.all %}<tr><td>{{ treatment.get_treatment_type_display }}</td><td>{{ treatment.description|default:"—" }}</td><td>{{ treatment.supplier|default:"—" }}</td><td>{{ treatment.cost|money }}</td><td>{% if quote.status != "archived" %}<form method="post" action="{% url 'quotes:treatment_delete' quote.pk treatment.pk %}" data-confirm="Rimuovere il trattamento {{ treatment.get_treatment_type_display }} dalla fase {{ row.config.name }}?">{% csrf_token %}<button class="button danger small" type="submit">Rimuovi</button></form>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+        {% endif %}
+
+        {% if quote.status != "archived" %}
+          {% if row.phase.treatments.exists %}<details class="add-panel phase-add-panel"><summary>Aggiungi un altro trattamento</summary>{% endif %}
+          {% include "quotes/_phase_treatment_form.html" with form=row.treatment_form phase=row.phase quote=quote %}
+          {% if row.phase.treatments.exists %}</details>{% endif %}
+        {% endif %}
+      {% endif %}
+    </div>
+    {% endif %}
+  </div>
+</details>
+{% if quote.status != "archived" %}<form id="phase-toggle-form-{{ row.phase.pk }}" method="post" action="{% url 'quotes:phase_update' quote.pk row.phase.pk %}" class="phase-toggle-form" hx-post="{% url 'quotes:phase_update' quote.pk row.phase.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">{% csrf_token %}</form>{% endif %}

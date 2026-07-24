@@ -111,6 +111,48 @@ class HighSeverityWorkflowTests(TestCase):
         self.assertContains(response, "maggiore o uguale a 1")
         self.assertFalse(phase.operations.exists())
 
+    def test_deactivating_phase_clears_all_saved_phase_data_without_success_banner(self):
+        phase_def = PhaseDefinition.objects.get(code="saldatura")
+        phase = ItemPhase.objects.create(
+            item=self.item,
+            definition=phase_def,
+            active=True,
+            display_order=5,
+            notes="Nota fase",
+            internal_answer=ItemPhase.InternalAnswer.YES,
+        )
+        resource = ProductionResource.objects.filter(phase=phase_def).first()
+        TimeOperation.objects.create(
+            phase=phase,
+            resource=resource,
+            working_minutes=Decimal("10"),
+            setup_minutes=Decimal("2"),
+            operators_snapshot=1,
+            resource_name_snapshot=resource.name,
+            hourly_cost_snapshot=resource.hourly_cost_per_person,
+        )
+        DirectCost.objects.create(phase=phase, description="Costo salvato", amount=Decimal("15"))
+        ExternalTreatment.objects.create(
+            phase=phase,
+            treatment_type=ExternalTreatment.TreatmentType.PAINTING,
+            cost=Decimal("20"),
+        )
+
+        response = self.client.post(
+            reverse("quotes:phase_update", args=[self.quote.pk, phase.pk]),
+            {},
+            follow=True,
+        )
+
+        phase.refresh_from_db()
+        self.assertFalse(phase.active)
+        self.assertEqual(phase.notes, "")
+        self.assertEqual(phase.internal_answer, ItemPhase.InternalAnswer.TO_CHECK)
+        self.assertFalse(phase.operations.exists())
+        self.assertFalse(phase.direct_costs.exists())
+        self.assertFalse(phase.treatments.exists())
+        self.assertNotContains(response, "aggiornata automaticamente")
+
 
 class DuplicationTests(TestCase):
     @classmethod

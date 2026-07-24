@@ -1,0 +1,20 @@
+<form method="post" action="{% url 'quotes:direct_cost_add' quote.pk phase.pk %}" class="phase-entry-form" hx-post="{% url 'quotes:direct_cost_add' quote.pk phase.pk %}" hx-target="#page-main" hx-select="#page-main" hx-swap="outerHTML">
+  {% csrf_token %}
+  {% for hidden in form.hidden_fields %}{{ hidden }}{% endfor %}
+  {% if form.non_field_errors %}<div class="field-error full" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+  <section class="phase-form-section phase-form-section--required">
+    <div class="phase-form-heading"><strong>{% if mode == "purchase" %}Dati necessari{% else %}Dati della lavorazione{% endif %}</strong><small>{% if mode == "purchase" %}Identifica l’acquisto e indica il costo.{% else %}L’importo può restare vuoto se la voce non ha un costo diretto.{% endif %}</small></div>
+    <div class="phase-required-grid phase-required-grid--direct">
+      {% include "quotes/_field.html" with field=form.description %}
+      {% include "quotes/_field.html" with field=form.amount %}
+    </div>
+  </section>
+  <details class="phase-form-section phase-form-section--optional" {% if form.supplier.errors or form.notes.errors %}open{% endif %}>
+    <summary><span><strong>Dettagli facoltativi</strong><small>{% if mode == "purchase" %}Fornitore e note{% else %}Note interne{% endif %}</small></span></summary>
+    <div class="phase-optional-grid">
+      {% if form.supplier %}{% include "quotes/_field.html" with field=form.supplier %}{% endif %}
+      {% include "quotes/_field.html" with field=form.notes %}
+    </div>
+  </details>
+  <div class="form-actions phase-entry-actions"><button class="button primary" type="submit">{% if mode == "purchase" %}Aggiungi acquisto{% else %}Aggiungi costo{% endif %}</button></div>
+</form>

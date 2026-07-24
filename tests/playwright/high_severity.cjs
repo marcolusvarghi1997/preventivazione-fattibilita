@@ -148,6 +148,11 @@ async function main() {
     assert.ok(await selector.evaluate((element) => element.getBoundingClientRect().width <= 570));
     assert.equal(await selector.locator('input[type="radio"]').first().evaluate((element) => element.getBoundingClientRect().width <= 1), true);
     const articleTrack = selector.locator("ul, div[id]").first();
+    assert.equal(
+      await articleTrack.evaluate((element) => getComputedStyle(element).borderTopWidth),
+      "0px",
+      "Il selettore Articoli non deve avere un bordo esterno.",
+    );
     const articleInitialTransform = await articleTrack.evaluate((element) => getComputedStyle(element, "::before").transform);
     const articleCurrentIndex = await labels.evaluateAll((elements) => elements.findIndex((element) => element.querySelector("input").checked));
     await labels.nth((articleCurrentIndex + 1) % 3).click();
@@ -155,11 +160,11 @@ async function main() {
       await articleTrack.evaluate((element) => getComputedStyle(element, "::before").transitionProperty),
       /transform/,
     );
-    await page.waitForTimeout(280);
+    await page.waitForTimeout(320);
     assert.notEqual(
       await articleTrack.evaluate((element) => getComputedStyle(element, "::before").transform),
       articleInitialTransform,
-      "Nella pagina Articoli l’indicatore deve scorrere orizzontalmente.",
+      "Nella pagina Articoli la barra deve scorrere orizzontalmente.",
     );
 
     await page.goto(`${baseURL}/preventivi/${fixtures.main_quote}/riepilogo/`);
@@ -173,14 +178,19 @@ async function main() {
     assert.ok(summaryGeometry[0].y < summaryGeometry[1].y && summaryGeometry[1].y < summaryGeometry[2].y);
     assert.ok(await summarySelector.evaluate((element) => element.getBoundingClientRect().width <= 250));
     const summaryTrack = summarySelector.locator("ul, div[id]").first();
+    assert.equal(
+      await summaryTrack.evaluate((element) => getComputedStyle(element).borderTopWidth),
+      "0px",
+      "Il selettore Riepilogo non deve avere un bordo esterno.",
+    );
     const summaryInitialTransform = await summaryTrack.evaluate((element) => getComputedStyle(element, "::before").transform);
     const summaryCurrentIndex = await summaryLabels.evaluateAll((elements) => elements.findIndex((element) => element.querySelector("input").checked));
     await summaryLabels.nth((summaryCurrentIndex + 1) % 3).click();
-    await page.waitForTimeout(280);
+    await page.waitForTimeout(320);
     assert.notEqual(
       await summaryTrack.evaluate((element) => getComputedStyle(element, "::before").transform),
       summaryInitialTransform,
-      "Nel riepilogo l’indicatore deve scorrere verticalmente.",
+      "Nel riepilogo la barra deve scorrere verticalmente.",
     );
   });
 
@@ -243,7 +253,8 @@ async function main() {
     const article = page.locator("details[data-article-card]").filter({ hasText: "PW-COMPLETO" });
     await article.locator(":scope > summary").click();
     assert.equal(await article.locator('input[name$="-quantity"]').inputValue(), "3");
-    assert.match(await article.innerText(), /2,750 kg/);
+    assert.equal(await article.locator(".material-value-control--suffix input").inputValue(), "2,750");
+    assert.equal(await article.locator(".material-value-control--suffix span").innerText(), "kg");
     const materialAlignment = await article.locator(".material-table tbody tr").first().evaluate((row) => {
       const rowBox = row.getBoundingClientRect();
       const buttonBox = row.querySelector(".row-actions").getBoundingClientRect();
@@ -337,10 +348,26 @@ async function main() {
     const inactive = page.locator("details.phase-card.inactive").first();
     const phaseId = await inactive.getAttribute("id");
     await inactive.locator(":scope > summary").click();
+    assert.equal(await inactive.getAttribute("open"), null, "Una fase inattiva non deve aprirsi cliccando la scheda.");
     await inactive.getByLabel(/^Attiva /).check();
     const active = page.locator(`#${phaseId}.phase-card.active`);
     await active.waitFor();
     assert.equal(await active.getByLabel(/^Attiva /).isChecked(), true);
+    assert.equal(await page.locator(".message.success").count(), 0, "Il tick non deve mostrare conferme ridondanti.");
+
+    const workspaceAlignment = await page.locator(".work-workspace").evaluate((workspace) => {
+      const heading = workspace.querySelector(".page-heading").getBoundingClientRect();
+      const banner = workspace.querySelector(".item-banner").getBoundingClientRect();
+      const actions = workspace.querySelector(".wizard-actions").getBoundingClientRect();
+      return {
+        headingLeft: Math.round(heading.left),
+        bannerLeft: Math.round(banner.left),
+        bannerRight: Math.round(banner.right),
+        actionsRight: Math.round(actions.right),
+      };
+    });
+    assert.equal(workspaceAlignment.headingLeft, workspaceAlignment.bannerLeft, "Titolo e articolo devono partire dallo stesso asse.");
+    assert.equal(workspaceAlignment.bannerRight, workspaceAlignment.actionsRight, "Articolo e azioni devono terminare sullo stesso asse.");
 
     await active.getByLabel(/^Attiva /).uncheck();
     const restored = page.locator(`#${phaseId}.phase-card.inactive`);
@@ -392,17 +419,19 @@ async function main() {
     assert.deepEqual(focus.missingLabels, []);
   });
 
-  await runTest("fasi inattive compatte e apribili anche su schermo piccolo", async (page) => {
+  await runTest("fasi inattive compatte e non apribili anche su schermo piccolo", async (page) => {
     await page.goto(`${baseURL}/preventivi/${fixtures.main_quote}/lavorazioni/`);
     assert.equal(await page.locator("details.phase-card").count(), 22);
     assert.equal(await page.locator("details.phase-card[open]").count(), 1);
     assert.equal(await page.locator("details.phase-card:not([open])").count(), 21);
     const firstInactive = page.locator("details.phase-card.inactive").first();
     await firstInactive.locator(":scope > summary").click();
-    assert.equal(await firstInactive.getAttribute("open"), "");
+    assert.equal(await firstInactive.getAttribute("open"), null);
     await page.setViewportSize({ width: 390, height: 844 });
     await page.reload();
     assert.equal(await page.locator("details.phase-card:not([open])").count(), 21);
+    await page.locator("details.phase-card.inactive").first().locator(":scope > summary").click();
+    assert.equal(await page.locator("details.phase-card.inactive").first().getAttribute("open"), null);
   });
 
   await runTest("nessun overflow globale ai viewport richiesti e zoom 125%", async (page) => {
