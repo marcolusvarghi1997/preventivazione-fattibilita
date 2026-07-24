@@ -23,7 +23,7 @@
     {% include "quotes/_field.html" with field=item_form.length_mm %}
     {% include "quotes/_field.html" with field=item_form.height_mm %}
     {% include "quotes/_field.html" with field=item_form.depth_mm %}
-    <div class="dimension-tools"><button class="button secondary small" type="button" data-open-unit-converter>Converti misure</button></div>
+    <div class="dimension-tools" hidden><button class="button secondary small" type="button" data-open-unit-converter>Converti misure</button></div>
     {% include "quotes/_field.html" with field=item_form.technical_notes %}
   </div>
 </details>

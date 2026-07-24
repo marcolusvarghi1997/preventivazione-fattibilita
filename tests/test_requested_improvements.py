@@ -388,6 +388,11 @@ class RequestedEconomicRuleTests(TestCase):
         self.assertEqual(list(QuoteSearchForm().fields["feasibility"].choices)[1:], expected)
         self.assertEqual(QuoteItem().feasibility, Feasibility.TO_CHECK)
 
+    def test_article_quantity_is_limited_to_five_digits(self):
+        form = QuoteItemForm(data={"quantity": "100000", "feasibility": Feasibility.TO_CHECK})
+        self.assertFalse(form.is_valid())
+        self.assertIn("quantity", form.errors)
+
     def test_material_editor_shows_units_without_repeating_current_values(self):
         response = self.client.get(reverse("quotes:items", args=[self.quote.pk]))
         self.assertContains(response, "material-value-control")
@@ -556,6 +561,12 @@ class ClientAndLanTests(TestCase):
         self.assertContains(loaded_response, "Articolo caricato")
         self.assertNotContains(loaded_response, "Seconda fase ·")
         self.assertContains(loaded_response, "Converti misure")
+        self.assertContains(loaded_response, 'class="dimension-tools" hidden', html=False)
+        self.assertContains(loaded_response, "0,000 cm")
+        self.assertContains(loaded_response, "0,000 in")
+        self.assertContains(loaded_response, 'data-quantity-step="-1"', html=False)
+        self.assertContains(loaded_response, 'data-quantity-step="1"', html=False)
+        self.assertContains(loaded_response, 'max="99999"', html=False)
         self.assertContains(loaded_response, f'name="item-{item.pk}-length_mm"', html=False)
         self.assertContains(loaded_response, f'name="item-{item.pk}-height_mm"', html=False)
         self.assertContains(loaded_response, f'name="item-{item.pk}-depth_mm"', html=False)

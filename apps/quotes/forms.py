@@ -207,15 +207,15 @@ class ArticleLoadForm(forms.Form):
 class QuoteItemForm(forms.ModelForm):
     length_mm = ItalianDecimalField(
         label="Lunghezza", required=False, min_value=Decimal("0.001"), max_digits=12, decimal_places=3,
-        widget=ItalianDecimalInput(attrs={"min": "0.001"}, places=3),
+        widget=ItalianDecimalInput(attrs={"min": "0.001", "data-dimension-mm": ""}, places=3),
     )
     height_mm = ItalianDecimalField(
         label="Altezza", required=False, min_value=Decimal("0.001"), max_digits=12, decimal_places=3,
-        widget=ItalianDecimalInput(attrs={"min": "0.001"}, places=3),
+        widget=ItalianDecimalInput(attrs={"min": "0.001", "data-dimension-mm": ""}, places=3),
     )
     depth_mm = ItalianDecimalField(
         label="Profondità", required=False, min_value=Decimal("0.001"), max_digits=12, decimal_places=3,
-        widget=ItalianDecimalInput(attrs={"min": "0.001"}, places=3),
+        widget=ItalianDecimalInput(attrs={"min": "0.001", "data-dimension-mm": ""}, places=3),
     )
     external_purchases_cost = ItalianDecimalField(
         label="Costo acquisti esterni", required=False, min_value=Decimal("0"), max_digits=14, decimal_places=2,
@@ -241,7 +241,7 @@ class QuoteItemForm(forms.ModelForm):
         widgets = {
             "description": forms.Textarea(attrs={"rows": 2}),
             "technical_notes": forms.Textarea(attrs={"rows": 3}),
-            "quantity": forms.NumberInput(attrs={"min": 1}),
+            "quantity": forms.NumberInput(attrs={"min": 1, "max": 99999, "data-quantity-input": ""}),
             "feasibility": forms.RadioSelect(),
             "external_purchases": forms.CheckboxInput(attrs={"data-extra-toggle": "external_purchases_cost"}),
             "external_work": forms.CheckboxInput(attrs={"data-extra-toggle": "external_work_cost"}),
@@ -252,7 +252,9 @@ class QuoteItemForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.fields["feasibility"].choices = FEASIBILITY_UI_CHOICES
         self.fields["quantity"].min_value = 1
+        self.fields["quantity"].max_value = 99999
         self.fields["quantity"].widget.attrs["min"] = "1"
+        self.fields["quantity"].widget.attrs["max"] = "99999"
 
     def clean(self):
         cleaned = super().clean()

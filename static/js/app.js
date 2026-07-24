@@ -232,6 +232,23 @@ const updateUnitConverter = () => {
   result.textContent = `${format(millimeters)} mm · ${format(millimeters / 10)} cm · ${format(millimeters / 100)} dm · ${format(millimeters / 1000)} m · ${format(millimeters / 25.4)} in`;
 };
 
+const updateDimensionHint = (input) => {
+  const hint = input.closest(".dimension-input-row")?.querySelector("[data-dimension-conversions]");
+  if (!hint) return;
+  const normalized = formatDecimalText(input.value, 6).replace(",", ".");
+  const millimeters = Number(normalized);
+  const value = Number.isFinite(millimeters) && millimeters > 0 ? millimeters : 0;
+  const format = (number) => new Intl.NumberFormat(
+    "it-IT", {minimumFractionDigits: 3, maximumFractionDigits: 3}
+  ).format(number);
+  hint.querySelector("[data-dimension-cm]").textContent = `${format(value / 10)} cm`;
+  hint.querySelector("[data-dimension-in]").textContent = `${format(value / 25.4)} in`;
+};
+
+const syncDimensionHints = (root = document) => {
+  root.querySelectorAll("[data-dimension-mm]").forEach(updateDimensionHint);
+};
+
 const clientSearchText = (client) => [client.name, client.email, client.phone].filter(Boolean).join(" ").toLocaleLowerCase("it");
 
 const hideClientResults = (form) => {
@@ -456,6 +473,7 @@ const initInteractive = (root = document) => {
   initToasts(root);
   initClientForms(root);
   syncExtraCosts(root);
+  syncDimensionHints(root);
   initBulkActionForms(root);
 };
 
@@ -649,6 +667,16 @@ document.addEventListener("click", (event) => {
     return;
   }
 
+  const quantityStep = event.target.closest("[data-quantity-step]");
+  if (quantityStep) {
+    const input = quantityStep.closest(".quantity-stepper")?.querySelector("[data-quantity-input]");
+    if (!input) return;
+    const current = Number.parseInt(input.value, 10) || 1;
+    input.value = String(Math.min(99999, Math.max(1, current + Number(quantityStep.dataset.quantityStep))));
+    input.dispatchEvent(new Event("input", {bubbles: true}));
+    return;
+  }
+
   const closeUnitConverter = event.target.closest("[data-close-unit-converter]");
   if (closeUnitConverter) {
     closeUnitConverter.closest("dialog")?.close();
@@ -667,6 +695,14 @@ document.addEventListener("click", (event) => {
 });
 
 document.addEventListener("input", (event) => {
+  if (event.target.matches("[data-dimension-mm]")) {
+    updateDimensionHint(event.target);
+    return;
+  }
+  if (event.target.matches("[data-quantity-input]")) {
+    if (Number(event.target.value) > 99999) event.target.value = "99999";
+    return;
+  }
   if (event.target.matches("[data-unit-converter-value], [data-unit-converter-source]")) {
     updateUnitConverter();
     return;

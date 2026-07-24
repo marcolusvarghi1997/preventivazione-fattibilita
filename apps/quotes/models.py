@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 from django.conf import settings
-from django.core.validators import MinValueValidator
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import IntegrityError, OperationalError, models, transaction
 from django.db.models import F
 from django.utils import timezone
@@ -172,7 +172,9 @@ class QuoteItem(models.Model):
     )
     code = models.CharField("Codice", max_length=100, db_index=True)
     article_date = models.DateField("Data articolo", default=timezone.localdate, db_index=True, editable=False)
-    quantity = models.PositiveIntegerField("Quantita", default=1, validators=[MinValueValidator(1)])
+    quantity = models.PositiveIntegerField(
+        "Quantita", default=1, validators=[MinValueValidator(1), MaxValueValidator(99999)]
+    )
     description = models.CharField("Descrizione", max_length=250, blank=True, db_index=True)
     revision = models.CharField("Revisione", max_length=50)
     legacy_dimensions = models.CharField("Dimensioni", max_length=150, blank=True)
@@ -219,7 +221,10 @@ class QuoteItem(models.Model):
             models.Index(fields=["code", "revision", "-article_date"], name="quoteitem_key_date_idx"),
         ]
         constraints = [
-            models.CheckConstraint(condition=models.Q(quantity__gte=1), name="item_quantity_positive"),
+            models.CheckConstraint(
+                condition=models.Q(quantity__gte=1, quantity__lte=99999),
+                name="item_quantity_positive",
+            ),
             models.CheckConstraint(condition=models.Q(length_mm__isnull=True) | models.Q(length_mm__gt=0), name="item_length_positive"),
             models.CheckConstraint(condition=models.Q(height_mm__isnull=True) | models.Q(height_mm__gt=0), name="item_height_positive"),
             models.CheckConstraint(condition=models.Q(depth_mm__isnull=True) | models.Q(depth_mm__gt=0), name="item_depth_positive"),

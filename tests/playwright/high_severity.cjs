@@ -250,8 +250,15 @@ async function main() {
       };
     }));
     assert.deepEqual(geometry.map((entry) => entry.value), ["internal", "to_check", "not_feasible"]);
-    assert.equal(new Set(geometry.map((entry) => entry.y)).size, 1, "Nella pagina Articoli i segmenti devono essere in riga.");
-    assert.ok(geometry[0].x < geometry[1].x && geometry[1].x < geometry[2].x);
+    assert.equal(new Set(geometry.map((entry) => entry.x)).size, 1, "Nella pagina Articoli i segmenti devono essere in colonna.");
+    assert.ok(geometry[0].y < geometry[1].y && geometry[1].y < geometry[2].y);
+    const essentialFields = await selector.locator("xpath=ancestor::*[contains(@class, 'article-core-fields')]").evaluate((element) => {
+      const quantity = element.querySelector(".field-quantity").getBoundingClientRect();
+      const feasibility = element.querySelector(".field-feasibility").getBoundingClientRect();
+      return {quantityHeight: quantity.height, feasibilityHeight: feasibility.height, quantityTop: quantity.top, feasibilityTop: feasibility.top};
+    });
+    assert.ok(Math.abs(essentialFields.quantityTop - essentialFields.feasibilityTop) <= 1);
+    assert.ok(Math.abs(essentialFields.quantityHeight - essentialFields.feasibilityHeight) <= 1);
     assert.equal(new Set(geometry.map((entry) => entry.color)).size, 3, "Le tre Fattibilità devono avere colori distinti.");
     assert.ok(await selector.evaluate((element) => element.getBoundingClientRect().width <= 570));
     assert.equal(await selector.locator('input[type="radio"]').first().evaluate((element) => element.getBoundingClientRect().width <= 1), true);
@@ -385,13 +392,11 @@ async function main() {
     await article.evaluate((element) => { element.open = true; });
     let editForm = article.locator("form.article-edit-form");
     await article.locator("details.article-secondary").first().evaluate((element) => { element.open = true; });
-    await article.getByRole("button", { name: "Converti misure" }).click();
-    const converter = page.locator("[data-unit-converter-dialog]");
-    await converter.getByLabel("Valore").fill("2,5");
-    await converter.getByLabel("Unità di partenza").selectOption("cm");
-    assert.match(await converter.locator("[data-unit-converter-result]").innerText(), /25 mm/);
-    await converter.getByRole("button", { name: "Inserisci in millimetri" }).click();
-    assert.equal(await editForm.locator('input[name$="-length_mm"]').inputValue(), "25");
+    assert.equal(await article.getByRole("button", { name: "Converti misure" }).count(), 0);
+    await editForm.locator('input[name$="-length_mm"]').fill("25,4");
+    const dimensionHint = editForm.locator(".field-length_mm [data-dimension-conversions]");
+    assert.match(await dimensionHint.innerText(), /2,540 cm/);
+    assert.match(await dimensionHint.innerText(), /1,000 in/);
     await editForm.locator('input[name$="-quantity"]').fill("3");
     await editForm.locator('[name$="-description"]').fill("Descrizione tecnica molto lunga per verificare il comportamento responsive senza troncamenti");
     await Promise.all([
@@ -414,7 +419,7 @@ async function main() {
     article = page.locator("details[data-article-card]").filter({ hasText: "PW-COMPLETO" });
     if ((await article.getAttribute("open")) === null) await article.locator(":scope > summary").click();
     assert.equal(await article.locator('input[name$="-quantity"]').inputValue(), "3");
-    assert.equal(await article.locator('input[name$="-length_mm"]').inputValue(), "25,000");
+    assert.equal(await article.locator('input[name$="-length_mm"]').inputValue(), "25,400");
     assert.equal(await article.locator(".material-value-control--suffix input").inputValue(), "2,750");
     assert.equal(await article.locator(".material-value-control--suffix span").innerText(), "kg");
     const materialAlignment = await article.locator(".material-table tbody tr").first().evaluate((row) => {
